@@ -1,4 +1,4 @@
-# Non-secret configuration. Environment-specific credentials belong in Databricks secrets.
+# Shared project settings. Contact information is supplied at runtime via SEC_USER_AGENT.
 project:
   name: sec-filing-analytics
   environment: development
@@ -7,6 +7,7 @@ source:
   sec:
     base_url: https://data.sec.gov
     user_agent_env_var: SEC_USER_AGENT
+    user_agent_default: "SEC-Filing-Analytics/1.0 contact@example.com"
     max_requests_per_second: 8
     connect_timeout_seconds: 10
     read_timeout_seconds: 30

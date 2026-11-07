@@ -3,38 +3,40 @@
 # MAGIC # Check SEC connection
 # MAGIC
 # MAGIC Sends one request to the SEC submissions API and displays the response.
-# MAGIC No SEC account or API key is needed.
+# MAGIC Run it from the GitHub project folder in Databricks. It uses the shared
+# MAGIC configuration in `configs/pipeline.yml`.
 
 # COMMAND ----------
 
-import os
 from pathlib import Path
+import sys
 
 import requests
 import yaml
 
 
-CONFIG_PATH = Path.cwd() / "configs" / "pipeline.yml"
-if not CONFIG_PATH.exists():
+def find_pipeline_config() -> Path:
+    """Find the project configuration when this notebook runs from a Git folder."""
+    search_roots = [Path.cwd(), *(Path(path) for path in sys.path if path)]
+    for root in search_roots:
+        config_path = root / "configs" / "pipeline.yml"
+        if config_path.is_file():
+            return config_path
     raise FileNotFoundError(
-        "Could not find configs/pipeline.yml. Run this notebook from the project's Databricks Repo."
+        "Could not find configs/pipeline.yml. Open this notebook from the connected "
+        "GitHub project folder in Databricks, then run it again."
     )
 
-with CONFIG_PATH.open(encoding="utf-8") as config_file:
+
+with find_pipeline_config().open(encoding="utf-8") as config_file:
     sec_config = yaml.safe_load(config_file)["source"]["sec"]
-
-USER_AGENT = os.environ.get(sec_config["user_agent_env_var"], sec_config["user_agent_default"])
-if "contact@example.com" in USER_AGENT:
-    raise ValueError(
-        "Set SEC_USER_AGENT to identify your project and contact email before running this check."
-    )
 
 TEST_CIK = "0000320193"  # Apple Inc.
 URL = f"{sec_config['base_url']}/submissions/CIK{TEST_CIK}.json"
 
 response = requests.get(
     URL,
-    headers={"User-Agent": USER_AGENT, "Accept-Encoding": "gzip, deflate"},
+    headers={"User-Agent": sec_config["user_agent"], "Accept-Encoding": "gzip, deflate"},
     timeout=(sec_config["connect_timeout_seconds"], sec_config["read_timeout_seconds"]),
 )
 response.raise_for_status()

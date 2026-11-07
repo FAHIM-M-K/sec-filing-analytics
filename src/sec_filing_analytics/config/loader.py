@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any
-import os
 
 import yaml
 
@@ -15,7 +14,7 @@ class ConfigurationError(ValueError):
 
 REQUIRED_PATHS = (
     ("source", "sec", "base_url"),
-    ("source", "sec", "user_agent_env_var"),
+    ("source", "sec", "user_agent"),
     ("source", "sec", "max_requests_per_second"),
     ("scope", "forms"),
     ("storage", "bronze_volume"),
@@ -43,16 +42,3 @@ def load_pipeline_config(path: str | Path) -> dict[str, Any]:
             raise ConfigurationError(f"Configuration value cannot be empty: {dotted_path}")
 
     return config
-
-
-def resolve_sec_settings(config: dict[str, Any], environ: dict[str, str] | None = None) -> dict[str, Any]:
-    """Resolve shared SEC settings and apply the optional runtime User-Agent override."""
-    environment = os.environ if environ is None else environ
-    settings = dict(config["source"]["sec"])
-    variable_name = settings["user_agent_env_var"]
-    settings["user_agent"] = environment.get(variable_name, settings["user_agent_default"])
-    if "contact@example.com" in settings["user_agent"]:
-        raise ConfigurationError(
-            f"Replace the example contact in {variable_name} or set that environment variable."
-        )
-    return settings

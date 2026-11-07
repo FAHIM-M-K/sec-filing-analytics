@@ -1,0 +1,35 @@
+# Non-secret configuration. Environment-specific credentials belong in Databricks secrets.
+project:
+  name: sec-filing-analytics
+  environment: development
+
+source:
+  sec:
+    base_url: https://data.sec.gov
+    user_agent_env_var: SEC_USER_AGENT
+    max_requests_per_second: 8
+    connect_timeout_seconds: 10
+    read_timeout_seconds: 30
+    retry:
+      max_attempts: 5
+      initial_backoff_seconds: 1
+      max_backoff_seconds: 30
+
+scope:
+  forms:
+    - 10-K
+    - 10-Q
+    - 10-K/A
+    - 10-Q/A
+  filing_lookback_days: 45
+  narrative_sections:
+    - Item 1A
+
+storage:
+  bronze_volume: /Volumes/sec_filing_analytics/bronze/raw
+  bronze_warning_utilization_percent: 70
+  bronze_hard_utilization_percent: 80
+
+warehouse:
+  sql_warning_size_gb: 28
+  sql_hard_operational_size_gb: 30

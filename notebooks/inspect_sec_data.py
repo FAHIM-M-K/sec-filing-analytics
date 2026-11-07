@@ -1,19 +1,8 @@
-# Databricks notebook source
-# MAGIC %md
-# MAGIC # Inspect SEC source data
-# MAGIC
-# MAGIC Look at Apple's Submissions, Company Facts, and one 10-K response.
-# MAGIC This is a read-only exploration notebook; it does not write tables or files.
-
-# COMMAND ----------
-
 import json
 import time
-
 import requests
 
-
-CIK = "0000320193"  # Apple Inc.
+CIK = "0000320193"
 HEADERS = {"User-Agent": "sec-filing-analytics thisimyid1239@gmail.com"}
 
 
@@ -38,7 +27,7 @@ print("Top-level fields:", list(submissions))
 print("Response size:", len(submissions_response.content), "bytes")
 print("Recent filings (first 8):")
 print(json.dumps([
-    {key: recent[key][i] for key in (
+    {key: recent[key][i] if i < len(recent.get(key, [])) else None for key in (
         "accessionNumber", "filingDate", "reportDate", "form", "primaryDocument", "fy", "fp"
     )}
     for i in range(min(8, len(recent["form"])))
@@ -59,11 +48,19 @@ print("Entity:", company_facts["entityName"])
 print("Taxonomies:", list(company_facts["facts"]))
 print("Number of us-gaap tags:", len(us_gaap))
 print("Response size:", len(facts_response.content), "bytes")
-for tag in list(us_gaap)[:3]:
-    print("\n", tag, "—", us_gaap[tag]["label"])
-    unit, observations = next(iter(us_gaap[tag]["units"].items()))
+sampled_tags = 0
+for tag, fact in us_gaap.items():
+    if not fact.get("units"):
+        continue
+    print("\n", tag, "—", fact.get("label"))
+    unit, observations = next(iter(fact["units"].items()))
     print("Unit:", unit)
     print(json.dumps(observations[:2], indent=2))
+    sampled_tags += 1
+    if sampled_tags == 3:
+        break
+if sampled_tags == 0:
+    print("No us-gaap facts with unit observations were returned.")
 
 # COMMAND ----------
 # MAGIC %md
@@ -73,7 +70,9 @@ for tag in list(us_gaap)[:3]:
 
 # COMMAND ----------
 
-ten_k = next(i for i, form in enumerate(recent["form"]) if form == "10-K")
+ten_k = next((i for i, form in enumerate(recent["form"]) if form == "10-K"), None)
+if ten_k is None:
+    raise ValueError("No 10-K filing was found in the recent Submissions data.")
 accession = recent["accessionNumber"][ten_k]
 document = recent["primaryDocument"][ten_k]
 filing_url = (

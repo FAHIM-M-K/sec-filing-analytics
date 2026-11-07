@@ -16,8 +16,14 @@ REQUIRED_PATHS = (
     ("source", "sec", "base_url"),
     ("source", "sec", "user_agent"),
     ("source", "sec", "max_requests_per_second"),
+    ("source", "sec", "connect_timeout_seconds"),
+    ("source", "sec", "read_timeout_seconds"),
+    ("source", "sec", "retry", "max_attempts"),
     ("scope", "forms"),
+    ("storage", "bronze_schema"),
     ("storage", "bronze_volume"),
+    ("universe", "membership_file"),
+    ("universe", "history_start_date"),
 )
 
 

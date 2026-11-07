@@ -26,9 +26,14 @@ scope:
     - Item 1A
 
 storage:
-  bronze_volume: /Volumes/sec_filing_analytics/bronze/raw
+  bronze_schema: sec_filing_analytics
+  bronze_volume: bronze
   bronze_warning_utilization_percent: 70
   bronze_hard_utilization_percent: 80
+
+universe:
+  membership_file: configs/sp500.csv
+  history_start_date: "2010-01-01"
 
 warehouse:
   sql_warning_size_gb: 28

@@ -2,18 +2,14 @@
 # MAGIC %md
 # MAGIC # Check SEC connection
 # MAGIC
-# MAGIC Sends one request to the SEC submissions API and displays the response.
-# MAGIC Run it from the GitHub project folder in Databricks. It uses the shared
-# MAGIC configuration in `configs/pipeline.yml`.
+# MAGIC Sends one request through the project's SEC client and displays the response.
+# MAGIC Run it from the GitHub project folder in Databricks. It validates that the
+# MAGIC shared configuration and reusable client work together.
 
 # COMMAND ----------
 
 from pathlib import Path
 import sys
-
-import requests
-import yaml
-
 
 def find_pipeline_config() -> Path:
     """Find the project configuration when this notebook runs from a Git folder."""
@@ -28,25 +24,28 @@ def find_pipeline_config() -> Path:
     )
 
 
-with find_pipeline_config().open(encoding="utf-8") as config_file:
-    sec_config = yaml.safe_load(config_file)["source"]["sec"]
+config_path = find_pipeline_config()
+project_root = config_path.parent.parent
+source_root = project_root / "src"
+if str(source_root) not in sys.path:
+    sys.path.insert(0, str(source_root))
+
+from sec_filing_analytics.config.loader import load_pipeline_config
+from sec_filing_analytics.sec_client import SecApiClient, SecApiClientSettings
+
+
+pipeline_config = load_pipeline_config(config_path)
+client_settings = SecApiClientSettings.from_pipeline_config(pipeline_config)
+client = SecApiClient(client_settings)
 
 TEST_CIK = "0000320193"  # Apple Inc.
-URL = f"{sec_config['base_url']}/submissions/CIK{TEST_CIK}.json"
-
-response = requests.get(
-    URL,
-    headers={"User-Agent": sec_config["user_agent"], "Accept-Encoding": "gzip, deflate"},
-    timeout=(sec_config["connect_timeout_seconds"], sec_config["read_timeout_seconds"]),
-)
-response.raise_for_status()
-payload = response.json()
+payload = client.get_submissions(TEST_CIK)
 
 print(
     {
-        "status_code": response.status_code,
         "cik": payload["cik"],
         "entity_name": payload["name"],
-        "response_content_type": response.headers.get("Content-Type"),
+        "client": "SecApiClient",
+        "source": "Company Submissions API",
     }
 )

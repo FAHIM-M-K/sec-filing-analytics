@@ -31,11 +31,11 @@ if str(source_root) not in sys.path:
     sys.path.insert(0, str(source_root))
 
 from sec_filing_analytics.config.loader import load_pipeline_config
-from sec_filing_analytics.sec_client import SecApiClient, SecApiClientSettings
+from sec_filing_analytics.sec_client import SecApiClient, SecClientSettings
 
 
 pipeline_config = load_pipeline_config(config_path)
-client_settings = SecApiClientSettings.from_pipeline_config(pipeline_config)
+client_settings = SecClientSettings.from_pipeline_config(pipeline_config)
 client = SecApiClient(client_settings)
 
 TEST_CIK = "0000320193"  # Apple Inc.

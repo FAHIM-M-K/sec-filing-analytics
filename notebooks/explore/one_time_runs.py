@@ -10,4 +10,4 @@
 # MAGIC %sql
 # MAGIC SHOW CATALOGS;
 # MAGIC SHOW SCHEMAS IN sec_analytics;
-# MAGIC SHOW VOLUMES IN sec_analytics_bronze;
+# MAGIC SHOW VOLUMES IN sec_analytics.bronze;

@@ -9,5 +9,7 @@
 
 # MAGIC %sql
 # MAGIC SHOW CATALOGS;
+# MAGIC %sql
 # MAGIC SHOW SCHEMAS IN sec_analytics;
+# MAGIC %sql
 # MAGIC SHOW VOLUMES IN sec_analytics.bronze;

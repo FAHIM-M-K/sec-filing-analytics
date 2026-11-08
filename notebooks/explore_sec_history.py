@@ -1,8 +1,6 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Explore SEC history and filing data
-# MAGIC
-# MAGIC Use Apple as one example to inspect older filing history, selected financial facts since 2010, and Item 1A text in two 10-K documents. This notebook only reads SEC data and prints small samples.
+# MAGIC # Explore SEC history
 
 # COMMAND ----------
 
@@ -13,19 +11,18 @@ import time
 import requests
 
 
-CIK = "0000320193"  # Apple Inc.
+CIK = "0000320193"
 HEADERS = {"User-Agent": "sec-filing-analytics thisimyid1239@gmail.com"}
 
 
 def get_sec(url):
-    time.sleep(0.2)  # Space these sequential requests below the SEC rate limit.
+    time.sleep(0.2)
     response = requests.get(url, headers=HEADERS, timeout=30)
     response.raise_for_status()
     return response
 
 
 def filing_rows(data):
-    # The current response nests rows under filings.recent; history files store them at the top level.
     columns = data.get("filings", {}).get("recent", data)
     count = len(columns.get("form", []))
     fields = ("accessionNumber", "filingDate", "reportDate", "form", "primaryDocument")
@@ -39,9 +36,7 @@ def filing_rows(data):
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Older filing history
-# MAGIC
-# MAGIC The current Submissions response points to separate files for older filings. This cell fetches the referenced file and compares the filing rows around 2010 onward.
+# MAGIC ## Filing history
 
 # COMMAND ----------
 
@@ -75,9 +70,7 @@ print(json.dumps(sorted(annual_and_quarterly, key=lambda row: row["filingDate"])
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## A few financial facts since 2010
-# MAGIC
-# MAGIC These are examples of commonly used company-wide facts. We keep the SEC tag, unit, dates, form, and accession visible because facts with the same period can come from different filings.
+# MAGIC ## Financial facts since 2010
 
 # COMMAND ----------
 
@@ -113,9 +106,7 @@ for tag in fact_tags:
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Item 1A in a 2010 and a recent 10-K
-# MAGIC
-# MAGIC This prints short raw-HTML snippets around the first matches. A match may be from a contents page; this is for inspection, not section extraction.
+# MAGIC ## Item 1A in two 10-K filings
 
 # COMMAND ----------
 

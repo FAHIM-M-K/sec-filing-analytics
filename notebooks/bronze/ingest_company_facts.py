@@ -3,6 +3,17 @@
 # MAGIC # Bronze — Ingest Company Facts
 
 # COMMAND ----------
+# MAGIC %pip install pyyaml>=6.0 requests>=2.32 --quiet
+
+# COMMAND ----------
+
+import sys
+
+_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_repo_root = "/Workspace" + _nb_path.rsplit("/notebooks", 1)[0]
+sys.path.insert(0, f"{_repo_root}/src")
+
+# COMMAND ----------
 
 import uuid
 

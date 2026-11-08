@@ -17,3 +17,4 @@
 # COMMAND ----------
 # MAGIC %sql
 # MAGIC SHOW VOLUMES IN sec_analytics.bronze;
+

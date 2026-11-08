@@ -1,15 +1,13 @@
 # Databricks notebook source
 # MAGIC %md
-# MAGIC # Explore SEC history
+# MAGIC # Explore — SEC Filing History (Apple Inc.)
+# MAGIC Read-only. Inspects older filing history, financial facts since 2010, and Item 1A HTML.
 
 # COMMAND ----------
 
 import json
-import re
 import time
-
 import requests
-
 
 CIK = "0000320193"
 HEADERS = {"User-Agent": "sec-filing-analytics thisimyid1239@gmail.com"}
@@ -36,7 +34,7 @@ def filing_rows(data):
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Filing history
+# MAGIC ## Filing History
 
 # COMMAND ----------
 
@@ -60,7 +58,7 @@ annual_and_quarterly = [
 ]
 
 print("Referenced history file:", history_file["name"])
-print("Date range in referenced file:", history_file["filingFrom"], "to", history_file["filingTo"])
+print("Date range:", history_file["filingFrom"], "to", history_file["filingTo"])
 print("Rows in current response:", len(current_rows))
 print("Rows in history file:", len(older_rows))
 print("Unique filings dated 2010 onward:", len(filings_since_2010))
@@ -70,7 +68,7 @@ print(json.dumps(sorted(annual_and_quarterly, key=lambda row: row["filingDate"])
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Financial facts since 2010
+# MAGIC ## Financial Facts Since 2010
 
 # COMMAND ----------
 
@@ -89,24 +87,22 @@ for tag in fact_tags:
     if tag not in us_gaap:
         print("Tag not present:", tag)
         continue
-
     fact = us_gaap[tag]
     unit, observations = next(iter(fact["units"].items()))
     observations_since_2010 = [
-        observation for observation in observations
-        if observation.get("end", "") >= "2010-01-01"
-        and observation.get("form") in ("10-K", "10-K/A", "10-Q", "10-Q/A")
+        obs for obs in observations
+        if obs.get("end", "") >= "2010-01-01"
+        and obs.get("form") in ("10-K", "10-K/A", "10-Q", "10-Q/A")
     ]
-    observations_since_2010.sort(key=lambda observation: (observation.get("end", ""), observation.get("filed", "")))
+    observations_since_2010.sort(key=lambda obs: (obs.get("end", ""), obs.get("filed", "")))
     sample = observations_since_2010[:2] + observations_since_2010[-2:]
-
-    print("\nTag:", tag, "| Label:", fact.get("label"), "| Unit:", unit)
+    print(f"\nTag: {tag} | Label: {fact.get('label')} | Unit: {unit}")
     print("Observations since 2010:", len(observations_since_2010))
     print(json.dumps(sample, indent=2))
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## Item 1A in two 10-K filings
+# MAGIC ## Item 1A in Two 10-K Filings
 
 # COMMAND ----------
 
@@ -142,3 +138,4 @@ for filing in (filing_2010, latest_10k):
         print("\nItem 1A match", match_number + 1, "at character", position)
         print(html[max(0, position - 160):position + 300])
         position = html.lower().find("item 1a", position + 1)
+

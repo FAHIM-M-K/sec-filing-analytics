@@ -1,4 +1,10 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Explore — SEC Source Data (Apple Inc.)
+# MAGIC Read-only. Inspects Submissions, Company Facts, and one 10-K document.
+
+# COMMAND ----------
+
 import json
 import time
 import requests
@@ -8,7 +14,7 @@ HEADERS = {"User-Agent": "sec-filing-analytics thisimyid1239@gmail.com"}
 
 
 def get_sec(url):
-    time.sleep(0.2)  # Space these sequential requests below the SEC rate limit.
+    time.sleep(0.2)
     response = requests.get(url, headers=HEADERS, timeout=30)
     response.raise_for_status()
     return response
@@ -65,9 +71,7 @@ if sampled_tags == 0:
 
 # COMMAND ----------
 # MAGIC %md
-# MAGIC ## One 10-K filing document
-# MAGIC
-# MAGIC The preview below is raw HTML. We are inspecting the source shape, not extracting sections yet.
+# MAGIC ## One 10-K Filing Document
 
 # COMMAND ----------
 
@@ -88,3 +92,4 @@ print("Content type:", filing_response.headers.get("Content-Type"))
 print("Response size:", len(filing_response.content), "bytes")
 print("Position of Item 1A text:", filing_response.text.lower().find("item 1a"))
 print("HTML preview:\n", filing_response.text[:3000])
+

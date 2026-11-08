@@ -89,6 +89,11 @@ class SecApiClient:
         normalized_cik = self._normalize_cik(cik)
         return self.get_json(f"/submissions/CIK{normalized_cik}.json")
 
+    def get_company_facts(self, cik: str | int) -> dict[str, Any]:
+        """Return the SEC Company Facts JSON document for one normalized CIK."""
+        normalized_cik = self._normalize_cik(cik)
+        return self.get_json(f"/api/xbrl/companyfacts/CIK{normalized_cik}.json")
+
     def get_json(self, path: str) -> dict[str, Any]:
         """Request one SEC JSON endpoint and return its parsed object."""
         url = f"{self._settings.base_url}/{path.lstrip('/')}"

@@ -137,11 +137,12 @@ def build_silver_observations(spark, manifest_df):
         except Exception:
             pass
 
+    from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
+
     if not all_rows:
-        from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
         return spark.createDataFrame([], schema=SILVER_OBSERVATION_SCHEMA)
 
-    df = spark.createDataFrame(all_rows)
+    df = spark.createDataFrame(all_rows, schema=SILVER_OBSERVATION_SCHEMA)
     df = _deduplicate_restatements(df)
     return df
 

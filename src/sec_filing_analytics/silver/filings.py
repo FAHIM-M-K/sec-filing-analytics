@@ -104,10 +104,11 @@ def build_silver_filing(spark, manifest_df):
         except Exception:
             pass
 
+    schema = _filing_row_schema()
     if not all_rows:
-        return spark.createDataFrame([], schema=_filing_row_schema())
+        return spark.createDataFrame([], schema=schema)
 
-    df = spark.createDataFrame(all_rows)
+    df = spark.createDataFrame(all_rows, schema=schema)
     df = df.dropDuplicates(["cik", "accession_number"])
     return df
 

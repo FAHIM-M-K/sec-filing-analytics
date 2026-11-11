@@ -8,50 +8,48 @@ observations = spark.table("sec_analytics.silver.observation")
 
 # COMMAND ----------
 
-# Filing stats
-filing_total = filings.count()
-filing_ciks  = filings.select("cik").distinct().count()
-
-form_counts = [
-    r.asDict()
-    for r in filings.groupBy("form_type").count().orderBy(F.col("count").desc()).collect()
-]
-
-filing_date_range = filings.select(
-    F.min("filing_date").alias("min_filing_date"),
-    F.max("filing_date").alias("max_filing_date"),
-).first().asDict()
+# Filing table: row counts, company coverage, form breakdown, date range
+filing_stats = {
+    "total_rows":        filings.count(),
+    "unique_companies":  filings.select("cik").distinct().count(),
+    "form_distribution": [
+        r.asDict()
+        for r in filings.groupBy("form_type").count().orderBy(F.col("count").desc()).collect()
+    ],
+    "date_range": filings.select(
+        F.min("filing_date").alias("min"),
+        F.max("filing_date").alias("max"),
+    ).first().asDict(),
+}
 
 # COMMAND ----------
 
-# Observation stats
-obs_total = observations.count()
-obs_ciks  = observations.select("cik").distinct().count()
-
-metric_summary = [
+# Observation table: per-metric company coverage and row counts
+metric_coverage = [
     r.asDict()
     for r in observations.groupBy("metric").agg(
-        F.count("*").alias("observation_count"),
-        F.countDistinct("cik").alias("company_count"),
-        F.min("period_end").alias("oldest_period"),
-        F.max("period_end").alias("newest_period"),
-    ).orderBy(F.col("company_count").desc()).collect()
+        F.count("*").alias("rows"),
+        F.countDistinct("cik").alias("companies"),
+        F.min("period_end").alias("oldest"),
+        F.max("period_end").alias("newest"),
+        F.sum(F.col("value").isNull().cast("int")).alias("null_values"),
+        F.sum((F.col("value") == 0).cast("int")).alias("zero_values"),
+    ).orderBy(F.col("companies").desc()).collect()
 ]
 
 # COMMAND ----------
 
-# Apple validation: annual Revenue and Net Income (sanity check against reported 10-Ks)
-apple_annual = [
+# Apple annual figures — spot-check that Silver numbers match SEC filings
+apple = [
     r.asDict()
     for r in observations.filter(
-        (F.col("cik").cast("long") == 320193)
+        (F.col("cik") == "0000320193")
         & (F.col("fiscal_period") == "FY")
-        & (F.col("form_type").isin("10-K", "10-K/A"))
+        & (F.col("form_type") == "10-K")
         & (F.col("metric").isin("Revenue", "Net Income", "Total Assets"))
+        & (F.col("fiscal_year") >= 2015)
     ).select(
-        "fiscal_year",
-        "metric",
-        "period_end",
+        "fiscal_year", "metric", "period_end",
         F.round(F.col("value") / 1e9, 2).alias("value_billions"),
     ).orderBy("fiscal_year", "metric").collect()
 ]
@@ -59,27 +57,17 @@ apple_annual = [
 # COMMAND ----------
 
 result = {
-    "silver_filing": {
-        "total_rows": filing_total,
-        "unique_companies": filing_ciks,
-        "form_distribution": form_counts,
-        "date_range": filing_date_range,
-    },
-    "silver_observation": {
-        "total_rows": obs_total,
-        "unique_companies": obs_ciks,
-        "metrics": metric_summary,
-    },
-    "apple_sample_financials": apple_annual,
+    "silver_filing":      filing_stats,
+    "silver_observation": {"metrics": metric_coverage},
+    "apple_spot_check":   apple,
 }
 
 with open("/Volumes/sec_analytics/bronze/raw/stats_silver_quality.json", "w") as f:
     json.dump(result, f, indent=2)
 
 dbutils.notebook.exit(json.dumps({
-    "status": "ok",
-    "filings_count": filing_total,
-    "observations_count": obs_total,
-    "companies_covered": obs_ciks,
+    "status":        "ok",
+    "filings":       filing_stats["total_rows"],
+    "observations":  sum(m["rows"] for m in metric_coverage),
+    "companies":     filing_stats["unique_companies"],
 }))
-

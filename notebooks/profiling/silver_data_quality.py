@@ -44,9 +44,9 @@ metric_summary = [
 apple_annual = [
     r.asDict()
     for r in observations.filter(
-        (F.col("cik") == "0000320193")
+        (F.col("cik").cast("long") == 320193)
         & (F.col("fiscal_period") == "FY")
-        & (F.col("form_type") == "10-K")
+        & (F.col("form_type").isin("10-K", "10-K/A"))
         & (F.col("metric").isin("Revenue", "Net Income", "Total Assets"))
     ).select(
         "fiscal_year",
@@ -82,3 +82,4 @@ dbutils.notebook.exit(json.dumps({
     "observations_count": obs_total,
     "companies_covered": obs_ciks,
 }))
+

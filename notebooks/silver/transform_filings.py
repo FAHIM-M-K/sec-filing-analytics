@@ -4,10 +4,6 @@ import os, sys
 
 # COMMAND ----------
 
-%pip install -r requirements.txt
-
-# COMMAND ----------
-
 _nb_path   = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 _repo_root = "/Workspace" + "/".join(_nb_path.split("/")[:-3])
 os.chdir(_repo_root)

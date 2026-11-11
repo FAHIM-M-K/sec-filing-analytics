@@ -128,3 +128,4 @@ for metric, hits in tag_hits.items():
     if not hits:
         print("    no matching tag found")
     print()
+

@@ -93,3 +93,4 @@ for tag_data in us_gaap.values():
     for unit in tag_data.get("units", {}).keys():
         all_units.add(unit)
 print(sorted(all_units))
+

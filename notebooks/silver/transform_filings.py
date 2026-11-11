@@ -33,7 +33,3 @@ display(df.limit(20))
 
 stats = upsert_silver_filing(spark, df, catalog)
 print(stats)
-
-
-
-

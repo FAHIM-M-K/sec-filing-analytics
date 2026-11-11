@@ -4,8 +4,7 @@ import os, sys
 
 # COMMAND ----------
 
-# %pip install -r requirements.txt
-# dbutils.library.restartPython()
+%pip install -r requirements.txt
 
 # COMMAND ----------
 

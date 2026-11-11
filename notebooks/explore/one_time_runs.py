@@ -19,7 +19,7 @@
 # MAGIC SHOW VOLUMES IN sec_analytics.bronze;
 
 # COMMAND ----------
-# MAGIC % sql
+# MAGIC %sql
 # MAGIC -- Check Submissions manifest
 # MAGIC SELECT
 # MAGIC     COUNT(*)                        AS total_rows,
@@ -38,5 +38,5 @@
 # MAGIC FROM sec_analytics.bronze.company_facts_manifest;
 
 # COMMAND ----------
-# MAGIC % sql
+# MAGIC %sql
 # MAGIC SELECT is_new_version, COUNT(*) FROM sec_analytics.bronze.submission_manifest GROUP BY 1;

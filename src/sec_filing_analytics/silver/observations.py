@@ -40,12 +40,6 @@ CANONICAL_TAGS: dict[str, list[str]] = {
     "Operating Cash Flow": [
         "NetCashProvidedByUsedInOperatingActivities",
     ],
-    "EPS Diluted": [
-        "EarningsPerShareDiluted",
-    ],
-    "EPS Basic": [
-        "EarningsPerShareBasic",
-    ],
 }
 
 # Reverse lookup: XBRL tag → canonical metric name
@@ -148,8 +142,6 @@ def build_silver_observations(spark, manifest_df):
 
 
 def _deduplicate_restatements(df):
-    from pyspark.sql import functions as F
-    from pyspark.sql.window import Window
     """
     Two-pass deduplication:
 
@@ -161,6 +153,8 @@ def _deduplicate_restatements(df):
     `RevenueFromContractWithCustomerExcludingAssessedTax`). Keep the highest-priority
     tag, defined by its position in CANONICAL_TAGS (earlier = higher priority).
     """
+    from pyspark.sql import functions as F
+    from pyspark.sql.window import Window
     # Build a priority map: tag -> int (lower = higher priority)
     tag_priority = {
         tag: idx

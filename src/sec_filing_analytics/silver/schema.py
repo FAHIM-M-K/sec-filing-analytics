@@ -2,7 +2,7 @@
 
 from pyspark.sql.types import (
     StructType, StructField,
-    StringType, IntegerType, LongType, DoubleType, BooleanType, TimestampType,
+    StringType, IntegerType, DoubleType,
 )
 
 

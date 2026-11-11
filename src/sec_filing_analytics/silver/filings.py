@@ -104,29 +104,15 @@ def build_silver_filing(spark, manifest_df):
         except Exception:
             pass
 
-    schema = _filing_row_schema()
+    from sec_filing_analytics.silver.schema import SILVER_FILING_SCHEMA
+
+    schema = SILVER_FILING_SCHEMA
     if not all_rows:
         return spark.createDataFrame([], schema=schema)
 
     df = spark.createDataFrame(all_rows, schema=schema)
     df = df.dropDuplicates(["cik", "accession_number"])
     return df
-
-
-def _filing_row_schema():
-    from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-    return StructType([
-        StructField("cik",              StringType(),  False),
-        StructField("accession_number", StringType(),  False),
-        StructField("form_type",        StringType(),  False),
-        StructField("filing_date",      StringType(),  True),
-        StructField("report_date",      StringType(),  True),
-        StructField("fiscal_year",      IntegerType(), True),
-        StructField("fiscal_period",    StringType(),  True),
-        StructField("company_name",     StringType(),  True),
-        StructField("primary_document", StringType(),  True),
-        StructField("source_hash",      StringType(),  True),
-    ])
 
 
 def upsert_silver_filing(spark, df, catalog: str = "sec_analytics") -> dict:

@@ -12,7 +12,6 @@ from typing import Any
 
 from sec_filing_analytics.sec_client.client import SecApiClient
 
-
 @dataclass(frozen=True)
 class CompanyFactsFetchResult:
     cik: str
@@ -44,11 +43,9 @@ def fetch_company_facts(cik: str, client: SecApiClient) -> CompanyFactsFetchResu
         taxonomies=sorted(facts.keys()),
     )
 
-
 def company_facts_volume_path(volume_root: str | Path, cik: str, content_hash: str) -> Path:
     """Return the hash-addressed volume path for one Company Facts payload."""
     return Path(volume_root) / "company_facts" / f"cik={cik}" / f"{content_hash}.json.gz"
-
 
 def land_company_facts_payload(
     result: CompanyFactsFetchResult, volume_root: str | Path
@@ -81,7 +78,6 @@ def build_manifest_row(
         "taxonomies": result.taxonomies,
     }
 
-
 def latest_company_facts_hashes(spark: Any, table_name: str) -> dict[str, str]:
     """Return the most recent content_hash per CIK. Returns {} if the table does not exist."""
     try:
@@ -99,7 +95,6 @@ def latest_company_facts_hashes(spark: Any, table_name: str) -> dict[str, str]:
         return {row["cik"]: row["content_hash"] for row in rows}
     except Exception:  # noqa: BLE001
         return {}
-
 
 def upsert_company_facts_manifest(
     spark: Any, rows: list[dict[str, Any]], table_name: str

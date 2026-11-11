@@ -1,10 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # Tag Coverage
-# MAGIC Check how many companies in the universe actually report each key metric tag.
-# MAGIC This tells Silver exactly which tags to map and which aliases to expect.
-
-# COMMAND ----------
 
 import gzip
 import json
@@ -14,7 +8,6 @@ facts_manifest = spark.table("sec_analytics.bronze.company_facts_manifest")
 
 # COMMAND ----------
 
-# Sample 50 companies at random — representative without loading all 2 GB.
 sample_paths = [
     r["payload_path"]
     for r in facts_manifest.filter(F.col("payload_path").isNotNull())
@@ -23,12 +16,6 @@ sample_paths = [
     .select("payload_path")
     .collect()
 ]
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## Which tags cover our target metrics?
-
-# COMMAND ----------
 
 METRIC_TAGS = {
     "Revenue": [
@@ -51,12 +38,14 @@ METRIC_TAGS = {
         "CashCashEquivalentsAndShortTermInvestments",
         "Cash",
     ],
-    "Long-term Debt": ["LongTermDebt", "LongTermDebtNoncurrent"],
-    "Operating Cash Flow": ["NetCashProvidedByUsedInOperatingActivities"],
+    "Long-term Debt":     ["LongTermDebt", "LongTermDebtNoncurrent"],
+    "Operating Cash Flow":["NetCashProvidedByUsedInOperatingActivities"],
 }
 
+# COMMAND ----------
+
 tag_hits = {metric: {} for metric in METRIC_TAGS}
-checked = 0
+checked  = 0
 
 for path in sample_paths:
     try:
@@ -71,17 +60,12 @@ for path in sample_paths:
     except Exception:
         pass
 
-# COMMAND ----------
-
 print(f"Companies checked: {checked}\n")
 for metric, hits in tag_hits.items():
-    companies_with_metric = len(set(tag for tag in hits))
-    total_hits = sum(hits.values())
-    print(f"--- {metric}  ({total_hits} tag matches across {checked} companies) ---")
+    total = sum(hits.values())
+    print(f"{metric}  —  {total} tag matches across {checked} companies")
     for tag, count in sorted(hits.items(), key=lambda x: -x[1]):
-        pct = round(count / checked * 100)
-        print(f"    {tag:<65} {count:>3} companies  ({pct}%)")
+        print(f"    {tag:<65} {count:>3}  ({round(count/checked*100)}%)")
     if not hits:
-        print("    *** NO MATCHING TAG FOUND — Silver cannot populate this metric ***")
+        print("    no matching tag found in sample")
     print()
-

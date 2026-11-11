@@ -1,10 +1,4 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # Filing Counts
-# MAGIC How many 10-K and 10-Q filings do we have per company since 2010?
-# MAGIC Which companies have enough history to be useful, and which are gaps?
-
-# COMMAND ----------
 
 import gzip
 import json
@@ -26,10 +20,6 @@ sample_paths = [
 RELEVANT_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC ## 10-K and 10-Q counts per company
-
-# COMMAND ----------
 
 rows = []
 
@@ -38,77 +28,46 @@ for path in sample_paths:
         with gzip.open(path, "rt", encoding="utf-8") as f:
             data = json.load(f)
 
-        cik  = data.get("cik", "")
-        name = data.get("name", "")
+        cik    = data.get("cik", "")
+        name   = data.get("name", "")
         recent = data.get("filings", {}).get("recent", {})
-        forms = recent.get("form", [])
-        dates = recent.get("filingDate", [])
+        forms  = recent.get("form", [])
+        dates  = recent.get("filingDate", [])
+        docs   = recent.get("primaryDocument", [])
+        accs   = recent.get("accessionNumber", [])
 
-        since_2010 = [
-            {"form": forms[i], "date": dates[i]}
+        filings_since_2010 = [
+            {
+                "form":      forms[i],
+                "date":      dates[i],
+                "accession": accs[i]  if i < len(accs)  else "",
+                "doc":       docs[i]  if i < len(docs)  else "",
+            }
             for i in range(len(forms))
             if forms[i] in RELEVANT_FORMS and i < len(dates) and dates[i] >= "2010-01-01"
         ]
 
-        annual    = [f for f in since_2010 if f["form"] in {"10-K", "10-K/A"}]
-        quarterly = [f for f in since_2010 if f["form"] in {"10-Q", "10-Q/A"}]
-        dates_only = [f["date"] for f in since_2010]
+        annual    = [f for f in filings_since_2010 if f["form"] in {"10-K", "10-K/A"}]
+        quarterly = [f for f in filings_since_2010 if f["form"] in {"10-Q", "10-Q/A"}]
+        all_dates = [f["date"] for f in filings_since_2010]
 
         rows.append({
-            "cik": cik,
-            "company": name,
-            "annual_filings": len(annual),
-            "quarterly_filings": len(quarterly),
-            "oldest_filing": min(dates_only, default="N/A"),
-            "newest_filing": max(dates_only, default="N/A"),
+            "cik":               cik,
+            "company":           name,
+            "annual_count":      len(annual),
+            "quarterly_count":   len(quarterly),
+            "oldest_filing":     min(all_dates, default=""),
+            "newest_filing":     max(all_dates, default=""),
+            "latest_10k_date":   max((f["date"] for f in annual), default=""),
+            "latest_10k_doc":    max(annual, key=lambda x: x["date"], default={}).get("doc", ""),
+            "latest_10k_acc":    max(annual, key=lambda x: x["date"], default={}).get("accession", ""),
         })
     except Exception:
         pass
 
 df = spark.createDataFrame(rows)
-display(df.orderBy("annual_filings"))
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## Distribution — how many companies have a full history?
+display(df.orderBy(F.col("annual_count").asc()))
 
 # COMMAND ----------
 
-df.groupBy("annual_filings").count().orderBy("annual_filings").show(25)
-
-# COMMAND ----------
-# MAGIC %md
-# MAGIC ## 10-K document details — what Silver needs to fetch Item 1A
-
-# COMMAND ----------
-
-# Silver needs the accession number and primaryDocument to build the EDGAR URL for each 10-K.
-doc_rows = []
-
-for path in sample_paths:
-    try:
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            data = json.load(f)
-        cik  = data.get("cik", "")
-        name = data.get("name", "")
-        recent = data.get("filings", {}).get("recent", {})
-        forms      = recent.get("form", [])
-        dates      = recent.get("filingDate", [])
-        docs       = recent.get("primaryDocument", [])
-        accessions = recent.get("accessionNumber", [])
-
-        for i, form in enumerate(forms):
-            if form == "10-K" and i < len(dates) and dates[i] >= "2010-01-01":
-                doc_rows.append({
-                    "cik": cik,
-                    "company": name,
-                    "filing_date": dates[i],
-                    "accession": accessions[i] if i < len(accessions) else "",
-                    "primary_document": docs[i] if i < len(docs) else "",
-                })
-    except Exception:
-        pass
-
-df_docs = spark.createDataFrame(doc_rows)
-display(df_docs.orderBy(F.col("filing_date").desc()))
-
+df.groupBy("annual_count").count().orderBy("annual_count").show(25)

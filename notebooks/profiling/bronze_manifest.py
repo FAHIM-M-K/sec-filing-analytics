@@ -7,6 +7,7 @@ facts = spark.table("sec_analytics.bronze.company_facts_manifest")
 
 # COMMAND ----------
 
+print("=== Submissions ===")
 sub.select(
     F.count("*").alias("rows"),
     F.countDistinct("cik").alias("unique_ciks"),
@@ -15,8 +16,7 @@ sub.select(
     F.max("fetched_at").alias("last_fetched"),
 ).show(truncate=False)
 
-# COMMAND ----------
-
+print("=== Company Facts ===")
 facts.select(
     F.count("*").alias("rows"),
     F.countDistinct("cik").alias("unique_ciks"),
@@ -28,13 +28,14 @@ facts.select(
 
 # COMMAND ----------
 
-# bottom 10 by tag count — companies with very few tags likely returned minimal data
+# companies with very few GAAP tags — worth investigating manually
 facts.select("cik", "entity_name", "us_gaap_tag_count", "response_size_bytes") \
      .orderBy("us_gaap_tag_count") \
      .show(10, truncate=False)
 
 # COMMAND ----------
 
-# any missing payload files
-sub.filter(F.col("payload_path").isNull()).select("cik", "entity_name", "fetched_at").show(truncate=False)
-facts.filter(F.col("payload_path").isNull()).select("cik", "entity_name", "fetched_at").show(truncate=False)
+missing_sub   = sub.filter(F.col("payload_path").isNull()).count()
+missing_facts = facts.filter(F.col("payload_path").isNull()).count()
+print(f"Missing submission payloads : {missing_sub}")
+print(f"Missing company facts payloads: {missing_facts}")

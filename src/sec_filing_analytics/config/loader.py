@@ -48,3 +48,7 @@ def load_pipeline_config(path: str | Path) -> dict[str, Any]:
             raise ConfigurationError(f"Configuration value cannot be empty: {dotted_path}")
 
     return config
+
+
+load_config = load_pipeline_config
+

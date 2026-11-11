@@ -5,18 +5,16 @@ import os, sys
 # COMMAND ----------
 
 _nb_path   = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
-_repo_root = "/Workspace" + "/".join(_nb_path.split("/")[:-3])
-os.chdir(_repo_root)
+_repo_root = "/Workspace" + _nb_path.rsplit("/notebooks", 1)[0]
 sys.path.insert(0, os.path.join(_repo_root, "src"))
+os.chdir(_repo_root)
 
 # COMMAND ----------
 
-from sec_filing_analytics.config.loader import load_config
 from sec_filing_analytics.silver.schema import filing_ddl
 from sec_filing_analytics.silver.filings import build_silver_filing, upsert_silver_filing
 
-cfg     = load_config("configs/pipeline.yml")
-catalog = cfg["unity_catalog"]["catalog"]
+catalog = "sec_analytics"
 
 # COMMAND ----------
 
@@ -35,4 +33,5 @@ display(df.limit(20))
 
 stats = upsert_silver_filing(spark, df, catalog)
 print(stats)
+
 

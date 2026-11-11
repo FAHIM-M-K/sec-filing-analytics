@@ -225,3 +225,4 @@ with open(out_path, "w") as f:
 
 print(f"Written to {out_path}")
 dbutils.notebook.exit(json.dumps({"status": "ok", "out_path": out_path}))
+

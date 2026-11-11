@@ -8,11 +8,15 @@
 # COMMAND ----------
 
 import sys
+import os
 
-# Resolve repo root dynamically so this works for any Databricks user/workspace.
+# Resolve repo root and set it as the working directory.
+# Databricks does not default to the repo root, so relative paths like
+# configs/pipeline.yml would fail without this.
 _nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
 _repo_root = "/Workspace" + _nb_path.rsplit("/notebooks", 1)[0]
 sys.path.insert(0, f"{_repo_root}/src")
+os.chdir(_repo_root)
 
 # COMMAND ----------
 

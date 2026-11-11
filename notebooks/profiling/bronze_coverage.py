@@ -1,6 +1,4 @@
 # Databricks notebook source
-# How much usable financial data do we actually have across the S&P 500?
-# Checks filing depth, metric availability, and tag aliases per company.
 
 import gzip, json
 from pyspark.sql import functions as F
@@ -8,83 +6,11 @@ from pyspark.sql import functions as F
 sub_manifest   = spark.table("sec_analytics.bronze.submission_manifest")
 facts_manifest = spark.table("sec_analytics.bronze.company_facts_manifest")
 
-# COMMAND ----------
-
-# Filing history — 10-K and 10-Q counts per company since 2010
-# Using all 500 to get accurate universe-wide numbers, not a sample.
-
 RELEVANT_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
-
-all_paths = [
-    r["payload_path"]
-    for r in sub_manifest.filter(F.col("payload_path").isNotNull())
-    .select("payload_path")
-    .collect()
-]
-
-filing_rows = []
-
-for path in all_paths:
-    try:
-        with gzip.open(path, "rt", encoding="utf-8") as f:
-            data = json.load(f)
-
-        cik    = data.get("cik", "")
-        name   = data.get("name", "")
-        recent = data.get("filings", {}).get("recent", {})
-        forms  = recent.get("form", [])
-        dates  = recent.get("filingDate", [])
-
-        since_2010 = [
-            {"form": forms[i], "date": dates[i]}
-            for i in range(min(len(forms), len(dates)))
-            if forms[i] in RELEVANT_FORMS and dates[i] >= "2010-01-01"
-        ]
-
-        annual    = [f for f in since_2010 if "10-K" in f["form"]]
-        quarterly = [f for f in since_2010 if "10-Q" in f["form"]]
-        all_dates = [f["date"] for f in since_2010]
-
-        # note: submissions only contain the most recent ~1000 filings;
-        # older companies will show fewer than expected here — chunk files hold the rest.
-        filing_rows.append({
-            "cik":             cik,
-            "company":         name,
-            "annual_count":    len(annual),
-            "quarterly_count": len(quarterly),
-            "oldest_filing":   min(all_dates, default=""),
-            "newest_filing":   max(all_dates, default=""),
-        })
-    except Exception:
-        pass
-
-df_filings = spark.createDataFrame(filing_rows)
-display(df_filings.orderBy("annual_count"))
-
-# COMMAND ----------
-
-# How many companies have at least N years of annual reports?
-print("Annual 10-K count distribution:")
-df_filings.groupBy("annual_count").count().orderBy("annual_count").show(25)
-
-total = df_filings.count()
-for threshold in [1, 5, 10, 14]:
-    n = df_filings.filter(F.col("annual_count") >= threshold).count()
-    print(f"  >= {threshold} annual filings: {n}/{total} companies ({round(n/total*100)}%)")
-
-# COMMAND ----------
-
-# XBRL tag coverage — which tags exist across the universe for our 8 key metrics?
-# Using 100 companies for a reliable estimate.
-
 METRIC_TAGS = {
-    "Revenue": [
-        "Revenues",
-        "RevenueFromContractWithCustomerExcludingAssessedTax",
-        "RevenueFromContractWithCustomerIncludingAssessedTax",
-        "SalesRevenueNet",
-        "SalesRevenueGoodsNet",
-    ],
+    "Revenue":             ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax",
+                            "RevenueFromContractWithCustomerIncludingAssessedTax",
+                            "SalesRevenueNet", "SalesRevenueGoodsNet"],
     "Net Income":          ["NetIncomeLoss", "ProfitLoss"],
     "Operating Income":    ["OperatingIncomeLoss"],
     "Total Assets":        ["Assets"],
@@ -94,23 +20,62 @@ METRIC_TAGS = {
     "Operating Cash Flow": ["NetCashProvidedByUsedInOperatingActivities"],
 }
 
+# COMMAND ----------
+
+# Filing history — all 500 companies
+all_sub_paths = [
+    r["payload_path"]
+    for r in sub_manifest.filter(F.col("payload_path").isNotNull()).select("payload_path").collect()
+]
+
+filing_rows = []
+for path in all_sub_paths:
+    try:
+        with gzip.open(path, "rt", encoding="utf-8") as f:
+            d = json.load(f)
+        forms  = d.get("filings", {}).get("recent", {}).get("form", [])
+        dates  = d.get("filings", {}).get("recent", {}).get("filingDate", [])
+        chunks = d.get("filings", {}).get("files", [])
+        since_2010 = [
+            {"form": forms[i], "date": dates[i]}
+            for i in range(min(len(forms), len(dates)))
+            if forms[i] in RELEVANT_FORMS and dates[i] >= "2010-01-01"
+        ]
+        annual    = [x for x in since_2010 if "10-K" in x["form"]]
+        quarterly = [x for x in since_2010 if "10-Q" in x["form"]]
+        all_dates = [x["date"] for x in since_2010]
+        filing_rows.append({
+            "cik": d.get("cik", ""), "company": d.get("name", ""),
+            "annual_count": len(annual), "quarterly_count": len(quarterly),
+            "oldest": min(all_dates, default=""), "newest": max(all_dates, default=""),
+            "has_chunks": len(chunks) > 0,
+        })
+    except Exception:
+        pass
+
+df_filings = spark.createDataFrame(filing_rows)
+distribution  = df_filings.groupBy("annual_count").count().orderBy("annual_count").collect()
+total         = df_filings.count()
+thresholds    = {f">={t}": f"{df_filings.filter(F.col('annual_count')>=t).count()}/{total}" for t in [0,1,5,10,14]}
+chunks_count  = df_filings.filter(F.col("has_chunks")).count()
+sparse        = df_filings.orderBy("annual_count").limit(10).collect()
+
+# COMMAND ----------
+
+# XBRL tag coverage — 100 sample companies
 facts_paths = [
     r["payload_path"]
     for r in facts_manifest.filter(F.col("payload_path").isNotNull())
-    .orderBy(F.rand(seed=42))
-    .limit(100)
-    .select("payload_path")
-    .collect()
+    .orderBy(F.rand(seed=42)).limit(100).select("payload_path").collect()
 ]
 
 tag_hits = {metric: {} for metric in METRIC_TAGS}
 checked  = 0
-
 for path in facts_paths:
     try:
         with gzip.open(path, "rt", encoding="utf-8") as f:
-            data = json.load(f)
-        us_gaap = data.get("facts", {}).get("us-gaap", {})
+            d = json.load(f)
+        us_gaap = d.get("facts", {}).get("us-gaap", {})
         checked += 1
         for metric, tags in METRIC_TAGS.items():
             for tag in tags:
@@ -119,13 +84,29 @@ for path in facts_paths:
     except Exception:
         pass
 
-print(f"\nTag coverage across {checked} sampled companies:\n")
-for metric, hits in tag_hits.items():
-    companies_covered = sum(1 for _ in hits if hits)
-    print(f"{metric}  ({sum(hits.values())} total tag matches)")
-    for tag, count in sorted(hits.items(), key=lambda x: -x[1]):
-        print(f"    {tag:<65} {count:>3} / {checked}  ({round(count/checked*100)}%)")
-    if not hits:
-        print("    no matching tag found")
-    print()
+# COMMAND ----------
 
+result = {
+    "filing_coverage": {
+        "total_companies": total,
+        "companies_with_chunk_files": chunks_count,
+        "threshold_summary": thresholds,
+        "distribution": [r.asDict() for r in distribution],
+        "sparse_companies": [r.asDict() for r in sparse],
+    },
+    "tag_coverage": {
+        "companies_sampled": checked,
+        "metrics": {
+            metric: {
+                tag: {"count": cnt, "pct": round(cnt / checked * 100)}
+                for tag, cnt in sorted(hits.items(), key=lambda x: -x[1])
+            }
+            for metric, hits in tag_hits.items()
+        }
+    }
+}
+
+with open("/Volumes/sec_analytics/bronze/raw/stats_coverage.json", "w") as f:
+    json.dump(result, f, indent=2)
+
+dbutils.notebook.exit(json.dumps({"status": "ok", "companies_parsed": total, "tags_checked": checked}))

@@ -10,6 +10,10 @@ os.chdir(_repo_root)
 CATALOG = "sec_analytics"
 
 # COMMAND ----------
+from sec_filing_analytics.silver.schema import narrative_ddl
+spark.sql(narrative_ddl(CATALOG))
+
+# COMMAND ----------
 from sec_filing_analytics.gold.schema import fact_narrative_ddl
 spark.sql(fact_narrative_ddl(CATALOG))
 

@@ -83,7 +83,14 @@ def build_dim_filing(spark, catalog: str):
         .withColumn("filing_key",   _hash_key(F, F.col("accession_number")))
         .select([fld.name for fld in GOLD_DIM_FILING_SCHEMA])
     )
-    return df
+    sentinel = spark.createDataFrame(
+        [{"filing_key": 0, "accession_number": "UNKNOWN", "cik": "UNKNOWN",
+          "form_type": "HISTORICAL/UNTRACKED", "filing_date": None,
+          "fiscal_year": None, "fiscal_period": None, "report_date": None,
+          "is_amendment": False}],
+        schema=GOLD_DIM_FILING_SCHEMA,
+    )
+    return df.union(sentinel)
 
 
 def build_dim_period(spark, catalog: str):

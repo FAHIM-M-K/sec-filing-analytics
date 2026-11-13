@@ -18,7 +18,7 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")
 spark.sql(narrative_ddl(catalog))
 
 # COMMAND ----------
-relevant_forms = ["10-K", "10-K/A", "8-K", "8-K/A"]
+relevant_forms = ["10-K", "10-K/A"]
 
 filings_df = (
     spark.table(f"{catalog}.silver.filing")

@@ -1,4 +1,4 @@
-import hashlib
+﻿import hashlib
 import re
 import time
 
@@ -19,16 +19,10 @@ _10K_ITEMS = [
         r"item\s+7a[\.\:\s\-\–\—\&#\d;]+(?:q\s*u\s*a\s*n\s*t\s*i\s*t\s*a\s*t\s*i\s*v\s*e|quantitative)|item\s+8[\.\:\s\-\–\—\&#\d;]+financial\s+statements",
     ),
 ]
-_8K_ITEMS = [
-    ("Item 2.02", r"item\s+2\.02[\.\:\s\-\–\—\&#\d;]*", r"item\s+\d\.\d\d|item\s+9\.01|signature"),
-    ("Item 8.01", r"item\s+8\.01[\.\:\s\-\–\—\&#\d;]*", r"item\s+\d\.\d\d|item\s+9\.01|signature"),
-]
 
 _FORM_ITEMS = {
     "10-K":   _10K_ITEMS,
     "10-K/A": _10K_ITEMS,
-    "8-K":    _8K_ITEMS,
-    "8-K/A":  _8K_ITEMS,
 }
 
 

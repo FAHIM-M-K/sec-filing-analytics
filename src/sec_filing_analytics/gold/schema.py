@@ -53,6 +53,20 @@ GOLD_FACT_SCHEMA = StructType([
     StructField("source_hash",       StringType(), True),
 ])
 
+GOLD_FACT_NARRATIVE_SCHEMA = StructType([
+    StructField("narrative_key",     LongType(),    False),
+    StructField("company_key",       LongType(),    False),
+    StructField("filing_key",        LongType(),    False),
+    StructField("cik",               StringType(),  False),
+    StructField("accession_number",  StringType(),  False),
+    StructField("form_type",         StringType(),  True),
+    StructField("filing_date",       StringType(),  True),
+    StructField("item_name",         StringType(),  False),
+    StructField("text_content",      StringType(),  True),
+    StructField("char_count",        IntegerType(), True),
+    StructField("source_hash",       StringType(),  True),
+])
+
 
 def dim_company_ddl(catalog: str) -> str:
     return f"""
@@ -127,4 +141,24 @@ CREATE TABLE IF NOT EXISTS {catalog}.gold.fact_financial_metric (
 )
 USING DELTA
 PARTITIONED BY (metric_name)
+"""
+
+
+def fact_narrative_ddl(catalog: str) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {catalog}.gold.fact_narrative (
+    narrative_key    BIGINT NOT NULL,
+    company_key      BIGINT NOT NULL,
+    filing_key       BIGINT NOT NULL,
+    cik              STRING NOT NULL,
+    accession_number STRING NOT NULL,
+    form_type        STRING,
+    filing_date      STRING,
+    item_name        STRING NOT NULL,
+    text_content     STRING,
+    char_count       INT,
+    source_hash      STRING
+)
+USING DELTA
+PARTITIONED BY (item_name)
 """

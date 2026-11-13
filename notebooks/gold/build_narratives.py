@@ -20,3 +20,4 @@ df = build_fact_narrative(spark, CATALOG)
 print(f"Rows to upsert: {df.count()}")
 result = upsert_fact_narrative(spark, df, CATALOG)
 print("fact_narrative:", result)
+

@@ -56,3 +56,4 @@ def upsert_fact_narrative(spark, df, catalog: str) -> dict:
         .execute()
     )
     return {"total_rows": spark.table(tbl).count()}
+

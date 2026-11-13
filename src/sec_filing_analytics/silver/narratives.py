@@ -58,15 +58,26 @@ def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str |
         return None
 
 
-def _extract_section(text: str, start_pat: str, stop_pat: str, min_chars: int = 300) -> str | None:
-    """Extract substantial text block between start_pat and stop_pat, discarding TOC matches."""
+# TOC entries end with a page number: "Item 1A. Risk Factors  5" or "... 14"
+# Real body sections never end with a bare integer.
+_TOC_LINE = re.compile(r"\s+\d{1,4}\s*$")
+
+
+def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
+    """
+    Collect all regex matches for start_pat, extract text up to stop_pat,
+    discard any match that is a Table of Contents entry (ends with a bare page number),
+    return the longest surviving candidate.
+    """
     candidates = []
     for m in re.finditer(start_pat, text, re.IGNORECASE):
         tail = text[m.start():]
         m2 = re.search(stop_pat, tail[len(m.group()):], re.IGNORECASE)
         sec = tail[: len(m.group()) + m2.start()].strip() if m2 else tail[:100_000].strip()
-        if len(sec) >= min_chars:
-            candidates.append(sec)
+        # Discard Table of Contents entries — they end with a bare page number
+        if _TOC_LINE.search(sec):
+            continue
+        candidates.append(sec)
     if not candidates:
         return None
     return max(candidates, key=len)
@@ -95,9 +106,8 @@ def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
         if not text:
             continue
 
-        min_chars = 100 if "8-K" in form else 300
         for item_name, start_pat, stop_pat in items:
-            content = _extract_section(text, start_pat, stop_pat, min_chars=min_chars)
+            content = _extract_section(text, start_pat, stop_pat)
             if not content:
                 continue
             rows.append({

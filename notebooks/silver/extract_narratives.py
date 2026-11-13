@@ -27,6 +27,17 @@ filings_df = (
     .select("cik", "accession_number", "form_type", "filing_date", "primary_document")
 )
 
+# Incremental processing: only process filings not already in silver.filing_narrative
+try:
+    existing_df = (
+        spark.table(f"{catalog}.silver.filing_narrative")
+        .select("cik", "accession_number")
+        .distinct()
+    )
+    filings_df = filings_df.join(existing_df, on=["cik", "accession_number"], how="left_anti")
+except Exception:
+    pass
+
 filing_rows = [r.asDict() for r in filings_df.collect()]
 print(f"Filings to process: {len(filing_rows)}")
 
@@ -56,4 +67,3 @@ if narrative_rows:
     print(f"silver.filing_narrative total rows: {result['total_rows']}")
 else:
     print("No narrative rows extracted — check network access and primary_document values.")
-

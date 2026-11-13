@@ -14,12 +14,20 @@ _HEADERS = {"User-Agent": "sec-filing-analytics fahimmeethale@gmail.com"}
 # Items to extract per form type.
 # Each entry: (item_name, start_pattern, stop_pattern)
 _10K_ITEMS = [
-    ("Item 1A",  r"item\s+1a[\.\s]", r"item\s+1b[\.\s]|item\s+2[\.\s]"),
-    ("Item 7",   r"item\s+7[\.\s]",  r"item\s+7a[\.\s]|item\s+8[\.\s]"),
+    (
+        "Item 1A",
+        r"item\s+1a[\.\:\s\-\–\—\&#\d;]+(?:r\s*i\s*s\s*k\s*f\s*a\s*c\s*t\s*o\s*r\s*s|risk)",
+        r"item\s+1b[\.\:\s\-\–\—\&#\d;]+(?:u\s*n\s*r\s*e\s*s\s*o\s*l\s*v|unresolved)|item\s+2[\.\:\s\-\–\—\&#\d;]+properties",
+    ),
+    (
+        "Item 7",
+        r"item\s+7[\.\:\s\-\–\—\&#\d;]+(?:m\s*a\s*n\s*a\s*g\s*e\s*m\s*e\s*n\s*t|management)",
+        r"item\s+7a[\.\:\s\-\–\—\&#\d;]+(?:q\s*u\s*a\s*n\s*t\s*i\s*t\s*a\s*t\s*i\s*v\s*e|quantitative)|item\s+8[\.\:\s\-\–\—\&#\d;]+financial\s+statements",
+    ),
 ]
 _8K_ITEMS = [
-    ("Item 2.02", r"item\s+2\.02", r"item\s+\d"),
-    ("Item 8.01", r"item\s+8\.01", r"item\s+\d"),
+    ("Item 2.02", r"item\s+2\.02[\.\:\s\-\–\—\&#\d;]*", r"item\s+\d\.\d\d|item\s+9\.01|signature"),
+    ("Item 8.01", r"item\s+8\.01[\.\:\s\-\–\—\&#\d;]*", r"item\s+\d\.\d\d|item\s+9\.01|signature"),
 ]
 
 _FORM_ITEMS = {
@@ -33,8 +41,9 @@ _FORM_ITEMS = {
 def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str | None:
     """Fetch the primary document from EDGAR and return plain text."""
     accession_clean = accession_number.replace("-", "")
+    cik_clean = str(int(cik)) if str(cik).isdigit() else cik
     url = (
-        f"https://www.sec.gov/Archives/edgar/data/{cik}/"
+        f"https://www.sec.gov/Archives/edgar/data/{cik_clean}/"
         f"{accession_clean}/{primary_document}"
     )
     try:
@@ -49,16 +58,18 @@ def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str |
         return None
 
 
-def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
-    """Extract the text block between start_pat and stop_pat (case-insensitive)."""
-    m = re.search(start_pat, text, re.IGNORECASE)
-    if not m:
+def _extract_section(text: str, start_pat: str, stop_pat: str, min_chars: int = 300) -> str | None:
+    """Extract substantial text block between start_pat and stop_pat, discarding TOC matches."""
+    candidates = []
+    for m in re.finditer(start_pat, text, re.IGNORECASE):
+        tail = text[m.start():]
+        m2 = re.search(stop_pat, tail[len(m.group()):], re.IGNORECASE)
+        sec = tail[: len(m.group()) + m2.start()].strip() if m2 else tail[:100_000].strip()
+        if len(sec) >= min_chars:
+            candidates.append(sec)
+    if not candidates:
         return None
-    tail = text[m.start():]
-    m2 = re.search(stop_pat, tail[len(m.group()):], re.IGNORECASE)
-    if m2:
-        return tail[: len(m.group()) + m2.start()].strip()
-    return tail[:50_000].strip()  # cap at ~50k chars if no stop found
+    return max(candidates, key=len)
 
 
 def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
@@ -84,8 +95,9 @@ def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
         if not text:
             continue
 
+        min_chars = 100 if "8-K" in form else 300
         for item_name, start_pat, stop_pat in items:
-            content = _extract_section(text, start_pat, stop_pat)
+            content = _extract_section(text, start_pat, stop_pat, min_chars=min_chars)
             if not content:
                 continue
             rows.append({

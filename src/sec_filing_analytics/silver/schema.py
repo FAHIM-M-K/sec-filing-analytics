@@ -1,5 +1,3 @@
-"""Silver layer schema definitions and DDL helpers."""
-
 from pyspark.sql.types import (
     StructType, StructField,
     StringType, IntegerType, DoubleType,
@@ -13,7 +11,7 @@ SILVER_FILING_SCHEMA = StructType([
     StructField("filing_date",      StringType(),    True),
     StructField("report_date",      StringType(),    True),
     StructField("fiscal_year",      IntegerType(),   True),
-    StructField("fiscal_period",    StringType(),    True),  # FY, Q1, Q2, Q3
+    StructField("fiscal_period",    StringType(),    True),
     StructField("company_name",     StringType(),    True),
     StructField("primary_document", StringType(),    True),
     StructField("source_hash",      StringType(),    True),
@@ -24,9 +22,9 @@ SILVER_OBSERVATION_SCHEMA = StructType([
     StructField("cik",            StringType(),  False),
     StructField("accession_number", StringType(), True),
     StructField("tag",            StringType(),  False),
-    StructField("metric",         StringType(),  False),  # canonical name
-    StructField("period_type",    StringType(),  False),  # instant | duration
-    StructField("period_start",   StringType(),  True),   # null for instant
+    StructField("metric",         StringType(),  False),
+    StructField("period_type",    StringType(),  False),
+    StructField("period_start",   StringType(),  True),
     StructField("period_end",     StringType(),  False),
     StructField("fiscal_year",    IntegerType(), True),
     StructField("fiscal_period",  StringType(),  True),
@@ -108,4 +106,3 @@ def observation_ddl(catalog: str = "sec_analytics") -> str:
     USING DELTA
     PARTITIONED BY (metric)
     """
-

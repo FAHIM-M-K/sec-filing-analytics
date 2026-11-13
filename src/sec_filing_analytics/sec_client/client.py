@@ -1,5 +1,3 @@
-"""Reliable, rate-limited access to the SEC data APIs."""
-
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -12,13 +10,11 @@ import requests
 
 
 class SecApiError(RuntimeError):
-    """Raised when the SEC API cannot return a valid response."""
+    pass
 
 
 @dataclass(frozen=True)
 class SecClientSettings:
-    """The SEC request settings loaded from the project YAML configuration."""
-
     base_url: str
     user_agent: str
     max_requests_per_second: float
@@ -30,7 +26,6 @@ class SecClientSettings:
 
     @classmethod
     def from_pipeline_config(cls, config: Mapping[str, Any]) -> "SecClientSettings":
-        """Create client settings from the ``source.sec`` YAML section."""
         sec = config["source"]["sec"]
         retry = sec["retry"]
         return cls(
@@ -46,8 +41,6 @@ class SecClientSettings:
 
 
 class RequestRateLimiter:
-    """Space requests so one Python process stays under the configured rate."""
-
     def __init__(self, requests_per_second: float) -> None:
         if requests_per_second <= 0:
             raise ValueError("requests_per_second must be greater than zero.")
@@ -56,7 +49,6 @@ class RequestRateLimiter:
         self._lock = Lock()
 
     def wait_for_turn(self) -> None:
-        """Reserve the next request slot and wait until it is safe to use."""
         with self._lock:
             now = monotonic()
             scheduled_time = max(now, self._next_request_at)
@@ -68,8 +60,6 @@ class RequestRateLimiter:
 
 
 class SecApiClient:
-    """Fetch SEC JSON endpoints with source-compliant request behavior."""
-
     _RETRYABLE_STATUS_CODES = {408, 429}
 
     def __init__(
@@ -85,17 +75,14 @@ class SecApiClient:
         self._sleep = sleeper
 
     def get_submissions(self, cik: str | int) -> dict[str, Any]:
-        """Return the SEC submissions JSON document for one normalized CIK."""
         normalized_cik = self._normalize_cik(cik)
         return self.get_json(f"/submissions/CIK{normalized_cik}.json")
 
     def get_company_facts(self, cik: str | int) -> dict[str, Any]:
-        """Return the SEC Company Facts JSON document for one normalized CIK."""
         normalized_cik = self._normalize_cik(cik)
         return self.get_json(f"/api/xbrl/companyfacts/CIK{normalized_cik}.json")
 
     def get_json(self, path: str) -> dict[str, Any]:
-        """Request one SEC JSON endpoint and return its parsed object."""
         url = f"{self._settings.base_url}/{path.lstrip('/')}"
         last_error: Exception | None = None
 

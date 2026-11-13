@@ -1,5 +1,3 @@
-"""Extract narrative text sections from 10-K and 8-K filings into silver.filing_narrative."""
-
 import hashlib
 import re
 import time
@@ -35,7 +33,6 @@ _FORM_ITEMS = {
 
 
 def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str | None:
-    """Fetch the primary document from EDGAR and return plain text."""
     accession_clean = accession_number.replace("-", "")
     cik_clean = str(int(cik)) if str(cik).isdigit() else cik
     url = (
@@ -46,7 +43,6 @@ def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str |
         resp = requests.get(url, headers=_HEADERS, timeout=20)
         if resp.status_code != 200:
             return None
-        # Strip HTML tags to plain text
         text = re.sub(r"<[^>]+>", " ", resp.text)
         text = re.sub(r"\s+", " ", text)
         return text
@@ -58,7 +54,6 @@ _TOC_LINE = re.compile(r"\s+\d{1,4}\s*$")
 
 
 def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
-    """Extract section between start_pat and stop_pat, excluding TOC entries ending in page numbers."""
     candidates = []
     for m in re.finditer(start_pat, text, re.IGNORECASE):
         tail = text[m.start():]
@@ -73,10 +68,6 @@ def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
 
 
 def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
-    """
-    For each filing row (from silver.filing), fetch the primary document and
-    extract relevant narrative sections. Returns a list of narrative dicts.
-    """
     rows = []
     for filing in filing_rows:
         form      = filing.get("form_type", "")
@@ -114,7 +105,6 @@ def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
 
 
 def upsert_narratives(spark, df, catalog: str = "sec_analytics") -> dict:
-    """MERGE narrative rows into silver.filing_narrative."""
     from delta.tables import DeltaTable
     from sec_filing_analytics.silver.schema import narrative_ddl
 
@@ -143,4 +133,3 @@ def upsert_narratives(spark, df, catalog: str = "sec_analytics") -> dict:
 
     total = spark.table(table_name).count()
     return {"total_rows": total}
-

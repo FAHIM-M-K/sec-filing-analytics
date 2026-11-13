@@ -1,5 +1,3 @@
-"""Bronze landing for SEC Company Submissions."""
-
 from __future__ import annotations
 
 import gzip
@@ -27,9 +25,7 @@ class SubmissionFetchResult:
 
 
 def fetch_submission(cik: str, client: SecApiClient) -> SubmissionFetchResult:
-    """Fetch the Submissions endpoint for one CIK. Does not write to storage."""
     payload = client.get_submissions(cik)
-    # sort_keys makes the hash stable even if the SEC server reorders JSON keys.
     content = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     content_hash = sha256(content.encode("utf-8")).hexdigest()
     filings = payload.get("filings", {})
@@ -48,12 +44,10 @@ def fetch_submission(cik: str, client: SecApiClient) -> SubmissionFetchResult:
 
 
 def submission_volume_path(volume_root: str | Path, cik: str, content_hash: str) -> Path:
-    """Return the hash-addressed volume path for one Submissions payload."""
     return Path(volume_root) / "submissions" / f"cik={cik}" / f"{content_hash}.json.gz"
 
 
 def land_submission_payload(result: SubmissionFetchResult, volume_root: str | Path) -> Path:
-    """Write the payload as gzip-compressed JSON to the volume. Returns the written path."""
     path = submission_volume_path(volume_root, result.cik, result.content_hash)
     path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(path, "wt", encoding="utf-8") as fh:
@@ -83,7 +77,6 @@ def build_manifest_row(
 
 
 def latest_submission_hashes(spark: Any, table_name: str) -> dict[str, str]:
-    """Return the most recent content_hash per CIK. Returns {} if the table does not exist."""
     try:
         rows = spark.sql(
             f"""
@@ -97,19 +90,13 @@ def latest_submission_hashes(spark: Any, table_name: str) -> dict[str, str]:
             """
         ).collect()
         return {row["cik"]: row["content_hash"] for row in rows}
-    except Exception:  # noqa: BLE001
+    except Exception:
         return {}
 
 
 def upsert_submission_manifest(
     spark: Any, rows: list[dict[str, Any]], table_name: str
 ) -> None:
-    """Merge manifest rows into the Bronze Delta table.
-
-    Merge key: (cik, content_hash).
-    WHEN MATCHED  -> update run_id and fetched_at; payload_path is preserved.
-    WHEN NOT MATCHED -> insert all columns including the new payload_path.
-    """
     if not rows:
         return
     from sec_filing_analytics.bronze.schema import SUBMISSION_MANIFEST_SCHEMA

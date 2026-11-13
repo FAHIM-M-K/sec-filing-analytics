@@ -1,5 +1,3 @@
-"""PySpark schemas and DDL helpers for Bronze Delta manifest tables."""
-
 from __future__ import annotations
 
 from typing import Any
@@ -49,7 +47,6 @@ COMPANY_FACTS_MANIFEST_SCHEMA = StructType(
 
 
 def create_submission_manifest_table(spark: Any, table_name: str) -> None:
-    """Create the Submissions manifest Delta table if it does not already exist."""
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
@@ -66,13 +63,11 @@ def create_submission_manifest_table(spark: Any, table_name: str) -> None:
             older_history_file_count INT
         )
         USING DELTA
-        COMMENT 'Bronze manifest for SEC Company Submissions fetches. One row per (CIK, content version).'
         """
     )
 
 
 def create_company_facts_manifest_table(spark: Any, table_name: str) -> None:
-    """Create the Company Facts manifest Delta table if it does not already exist."""
     spark.sql(
         f"""
         CREATE TABLE IF NOT EXISTS {table_name} (
@@ -89,7 +84,5 @@ def create_company_facts_manifest_table(spark: Any, table_name: str) -> None:
             taxonomies          ARRAY<STRING>
         )
         USING DELTA
-        COMMENT 'Bronze manifest for SEC Company Facts fetches. One row per (CIK, content version).'
         """
     )
-

@@ -1,5 +1,3 @@
-"""Load non-secret pipeline configuration from YAML."""
-
 from __future__ import annotations
 
 from pathlib import Path
@@ -9,7 +7,7 @@ import yaml
 
 
 class ConfigurationError(ValueError):
-    """Raised when a pipeline configuration is missing required values."""
+    pass
 
 
 REQUIRED_PATHS = (
@@ -28,7 +26,6 @@ REQUIRED_PATHS = (
 
 
 def load_pipeline_config(path: str | Path) -> dict[str, Any]:
-    """Load and minimally validate the versioned pipeline configuration."""
     config_path = Path(path)
     with config_path.open(encoding="utf-8") as config_file:
         config = yaml.safe_load(config_file)
@@ -51,4 +48,3 @@ def load_pipeline_config(path: str | Path) -> dict[str, Any]:
 
 
 load_config = load_pipeline_config
-

@@ -1,5 +1,3 @@
-"""Unit tests for silver.filings — no Spark, no network."""
-
 import gzip
 import json
 import os

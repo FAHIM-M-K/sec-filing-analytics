@@ -1,5 +1,3 @@
-"""Read and idempotently merge manually maintained S&P 500 membership periods."""
-
 from __future__ import annotations
 
 import csv
@@ -7,12 +5,10 @@ from datetime import date
 from pathlib import Path
 from typing import Any
 
-
 CSV_COLUMNS = ["CIK", "Ticker", "Company Name", "Effective Start Date", "Effective End Date"]
 
 
 def load_membership_csv(path: str | Path) -> list[dict[str, Any]]:
-    """Read membership periods and reject malformed or overlapping intervals."""
     records: list[dict[str, Any]] = []
     seen_keys: set[tuple[str, date]] = set()
 
@@ -68,7 +64,6 @@ def load_membership_csv(path: str | Path) -> list[dict[str, Any]]:
 
 
 def merge_membership_table(spark: Any, records: list[dict[str, Any]], table_name: str) -> None:
-    """Upsert periods by (CIK, start date); never delete historical membership rows."""
     if not records:
         raise ValueError("Membership CSV has no verified rows; refusing to replace or clear the table.")
 
@@ -94,7 +89,6 @@ def merge_membership_table(spark: Any, records: list[dict[str, Any]], table_name
 
 
 def current_constituent_ciks(spark: Any, table_name: str) -> list[str]:
-    """Return current members for routine ingestion, without removing former members."""
     rows = spark.sql(
         f"""
         SELECT DISTINCT cik
@@ -108,7 +102,6 @@ def current_constituent_ciks(spark: Any, table_name: str) -> list[str]:
 
 
 def membership_table_ddl(table_name: str) -> str:
-    """Return the Delta schema used for effective-dated company membership."""
     return f"""
     CREATE TABLE IF NOT EXISTS {table_name} (
         cik STRING NOT NULL,

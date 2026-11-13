@@ -23,8 +23,6 @@ TAGS = {
 }
 
 # COMMAND ----------
-
-# Annual 10-K figures from 2010 — confirms values are real and readable from raw payloads
 annual_rows = []
 for metric, tag in TAGS.items():
     for o in us_gaap.get(tag, {}).get("units", {}).get("USD", []):
@@ -37,10 +35,6 @@ for metric, tag in TAGS.items():
             })
 
 # COMMAND ----------
-
-# Restatement pattern — same period appears in multiple 10-K filings
-# This is SEC's comparative reporting pattern, not accounting errors.
-# Silver handles it with "latest filed wins" dedup.
 all_obs = []
 for metric, tag in TAGS.items():
     for o in us_gaap.get(tag, {}).get("units", {}).get("USD", []):

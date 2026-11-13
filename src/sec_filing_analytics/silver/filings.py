@@ -1,18 +1,15 @@
-"""Parse submission JSON payloads into the silver filing table."""
-
 import gzip
 import json
 import logging
+import os
 
 _log = logging.getLogger(__name__)
-
 
 FILING_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 FP_MAP = {"FY": "FY", "Q1": "Q1", "Q2": "Q2", "Q3": "Q3", "Q4": "Q4"}
 
 
 def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) -> list[dict]:
-    """Extract filing rows from a single recent/chunk block."""
     forms      = recent.get("form", [])
     dates      = recent.get("filingDate", [])
     reports    = recent.get("reportDate", [])
@@ -25,7 +22,7 @@ def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) 
     for i, form in enumerate(forms):
         if form not in FILING_FORMS:
             continue
-        filing_date = dates[i]      if i < len(dates)      else ""
+        filing_date = dates[i] if i < len(dates) else ""
         if filing_date < "2010-01-01":
             continue
         rows.append({
@@ -33,18 +30,17 @@ def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) 
             "accession_number": accessions[i] if i < len(accessions) else "",
             "form_type":        form,
             "filing_date":      filing_date,
-            "report_date":      reports[i]    if i < len(reports)    else "",
-            "fiscal_year":      int(fys[i])   if i < len(fys) and fys[i] else None,
+            "report_date":      reports[i] if i < len(reports) else "",
+            "fiscal_year":      int(fys[i]) if i < len(fys) and fys[i] else None,
             "fiscal_period":    FP_MAP.get(fps[i], fps[i]) if i < len(fps) else "",
             "company_name":     company,
-            "primary_document": docs[i]       if i < len(docs)       else "",
+            "primary_document": docs[i] if i < len(docs) else "",
             "source_hash":      source_hash,
         })
     return rows
 
 
 def parse_submission_payload(path: str, source_hash: str) -> list[dict]:
-    """Parse one submission gzip payload into filing dicts."""
     with gzip.open(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -53,7 +49,6 @@ def parse_submission_payload(path: str, source_hash: str) -> list[dict]:
 
     rows = _parse_recent_block(cik, company, data.get("filings", {}).get("recent", {}), source_hash)
 
-    import os
     base_dir = os.path.dirname(path)
     for chunk_ref in data.get("filings", {}).get("files", []):
         chunk_name = chunk_ref.get("name", "")
@@ -73,10 +68,6 @@ def parse_submission_payload(path: str, source_hash: str) -> list[dict]:
 
 
 def build_silver_filing(spark, manifest_df):
-    """
-    Read all submission payloads from the manifest and return a deduplicated
-    DataFrame ready to merge into silver.filing.
-    """
     from pyspark.sql import functions as F
 
     paths = [
@@ -105,7 +96,6 @@ def build_silver_filing(spark, manifest_df):
 
 
 def upsert_silver_filing(spark, df, catalog: str = "sec_analytics") -> dict:
-    """MERGE new filing rows into silver.filing. Returns row counts."""
     from delta.tables import DeltaTable
 
     table_name = f"{catalog}.silver.filing"
@@ -130,4 +120,3 @@ def upsert_silver_filing(spark, df, catalog: str = "sec_analytics") -> dict:
 
     total = spark.table(table_name).count()
     return {"total_rows": total}
-

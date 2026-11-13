@@ -1,11 +1,8 @@
-"""Parse company facts JSON payloads into the silver observation table."""
-
 import gzip
 import json
 import logging
 
 _log = logging.getLogger(__name__)
-
 
 CANONICAL_TAGS: dict[str, list[str]] = {
     "Revenue": [
@@ -58,7 +55,6 @@ RELEVANT_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 
 
 def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
-    """Parse one company facts payload into observation dicts."""
     with gzip.open(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -132,13 +128,6 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
 
 
 def build_silver_observations(spark, manifest_df):
-    """
-    Read all company facts payloads and return a deduplicated DataFrame
-    ready to merge into silver.observation.
-
-    Deduplication rule: when the same (cik, tag, period_end, fiscal_period, form_type)
-    appears more than once (a restatement), keep only the row with the latest filed_date.
-    """
     from pyspark.sql import functions as F
 
     paths = [
@@ -166,7 +155,6 @@ def build_silver_observations(spark, manifest_df):
 
 
 def _deduplicate_restatements(df):
-    """Deduplicate restatements (latest filed) and overlapping tags (priority order)."""
     from pyspark.sql import functions as F
     from pyspark.sql.window import Window
 
@@ -206,7 +194,6 @@ def _deduplicate_restatements(df):
 
 
 def upsert_silver_observations(spark, df, catalog: str = "sec_analytics") -> dict:
-    """MERGE observation rows into silver.observation. Returns row counts."""
     from delta.tables import DeltaTable
 
     table_name = f"{catalog}.silver.observation"
@@ -234,4 +221,3 @@ def upsert_silver_observations(spark, df, catalog: str = "sec_analytics") -> dic
 
     total = spark.table(table_name).count()
     return {"total_rows": total}
-

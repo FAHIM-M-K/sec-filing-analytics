@@ -1,12 +1,8 @@
 # Databricks notebook source
-# MAGIC %md
-# MAGIC # Bronze — Ingest Company Facts
-
 # COMMAND ----------
 # MAGIC %pip install pyyaml>=6.0 requests>=2.32 --quiet
 
 # COMMAND ----------
-
 import sys
 import os
 
@@ -16,7 +12,6 @@ sys.path.insert(0, f"{_repo_root}/src")
 os.chdir(_repo_root)
 
 # COMMAND ----------
-
 import uuid
 
 from sec_filing_analytics.config.loader import load_pipeline_config
@@ -40,11 +35,6 @@ VOLUME_ROOT = f"/Volumes/{CATALOG}/{SCHEMA}/{VOLUME_NAME}"
 CONFIG_PATH = "configs/pipeline.yml"
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC ## Setup
-
-# COMMAND ----------
-
 config = load_pipeline_config(CONFIG_PATH)
 client = SecApiClient(SecClientSettings.from_pipeline_config(config))
 run_id = str(uuid.uuid4())
@@ -53,11 +43,6 @@ create_company_facts_manifest_table(spark, COMPANY_FACTS_TABLE)
 print(f"Run ID: {run_id}")
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC ## Load Universe and Known Hashes
-
-# COMMAND ----------
-
 all_records = load_membership_csv(config["universe"]["membership_file"])
 active_ciks = [r["cik"] for r in all_records if r["membership_end_date"] is None]
 known_hashes = latest_company_facts_hashes(spark, COMPANY_FACTS_TABLE)
@@ -66,11 +51,6 @@ print(f"Active CIKs : {len(active_ciks)}")
 print(f"Known hashes: {len(known_hashes)}")
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC ## Fetch, Hash, and Land
-
-# COMMAND ----------
-
 manifest_rows = []
 errors = []
 
@@ -85,16 +65,11 @@ for cik in active_ciks:
 
         manifest_rows.append(build_manifest_row(result, run_id, payload_path, is_new_version))
 
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         errors.append({"cik": cik, "error": str(exc)})
         print(f"ERROR cik={cik}: {exc}")
 
 # COMMAND ----------
-# MAGIC %md
-# MAGIC ## Upsert Manifest and Summarise
-
-# COMMAND ----------
-
 upsert_company_facts_manifest(spark, manifest_rows, COMPANY_FACTS_TABLE)
 
 new_count = sum(1 for r in manifest_rows if r["is_new_version"])

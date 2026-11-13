@@ -1,5 +1,3 @@
-"""Unit tests for silver.observations — no Spark, no network."""
-
 import gzip
 import json
 import os
@@ -21,11 +19,11 @@ SAMPLE_FACTS = {
                          "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2024-11-01",
                          "start": "2023-10-01"},
                         {"accn": "0000320193-24-000123", "end": "2024-09-28", "val": 391035000000,
-                         "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2024-11-15",  # restatement
+                         "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2024-11-15",
                          "start": "2023-10-01"},
                         {"accn": "0000320193-20-000050", "end": "2009-09-26", "val": 36537000000,
                          "form": "10-K", "fp": "FY", "fy": 2009, "filed": "2009-10-27",
-                         "start": "2008-09-28"},  # pre-2010 end date
+                         "start": "2008-09-28"},
                     ]
                 }
             },
@@ -34,7 +32,6 @@ SAMPLE_FACTS = {
                     "USD": [
                         {"accn": "0000320193-24-000123", "end": "2024-09-28", "val": 364980000000,
                          "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2024-11-01"},
-                        # no "start" key — instant observation
                     ]
                 }
             },

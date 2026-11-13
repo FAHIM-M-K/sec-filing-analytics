@@ -1,5 +1,3 @@
-"""Bronze landing for SEC Company Facts."""
-
 from __future__ import annotations
 
 import gzip
@@ -11,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from sec_filing_analytics.sec_client.client import SecApiClient
+
 
 @dataclass(frozen=True)
 class CompanyFactsFetchResult:
@@ -26,7 +25,6 @@ class CompanyFactsFetchResult:
 
 
 def fetch_company_facts(cik: str, client: SecApiClient) -> CompanyFactsFetchResult:
-    """Fetch the Company Facts endpoint for one CIK. Does not write to storage."""
     payload = client.get_company_facts(cik)
     content = json.dumps(payload, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
     content_hash = sha256(content.encode("utf-8")).hexdigest()
@@ -43,14 +41,14 @@ def fetch_company_facts(cik: str, client: SecApiClient) -> CompanyFactsFetchResu
         taxonomies=sorted(facts.keys()),
     )
 
+
 def company_facts_volume_path(volume_root: str | Path, cik: str, content_hash: str) -> Path:
-    """Return the hash-addressed volume path for one Company Facts payload."""
     return Path(volume_root) / "company_facts" / f"cik={cik}" / f"{content_hash}.json.gz"
+
 
 def land_company_facts_payload(
     result: CompanyFactsFetchResult, volume_root: str | Path
 ) -> Path:
-    """Write the payload as gzip-compressed JSON to the volume. Returns the written path."""
     path = company_facts_volume_path(volume_root, result.cik, result.content_hash)
     path.parent.mkdir(parents=True, exist_ok=True)
     with gzip.open(path, "wt", encoding="utf-8") as fh:
@@ -78,8 +76,8 @@ def build_manifest_row(
         "taxonomies": result.taxonomies,
     }
 
+
 def latest_company_facts_hashes(spark: Any, table_name: str) -> dict[str, str]:
-    """Return the most recent content_hash per CIK. Returns {} if the table does not exist."""
     try:
         rows = spark.sql(
             f"""
@@ -93,18 +91,13 @@ def latest_company_facts_hashes(spark: Any, table_name: str) -> dict[str, str]:
             """
         ).collect()
         return {row["cik"]: row["content_hash"] for row in rows}
-    except Exception:  # noqa: BLE001
+    except Exception:
         return {}
+
 
 def upsert_company_facts_manifest(
     spark: Any, rows: list[dict[str, Any]], table_name: str
 ) -> None:
-    """Merge manifest rows into the Bronze Delta table.
-
-    Merge key: (cik, content_hash).
-    WHEN MATCHED  -> update run_id and fetched_at; payload_path is preserved.
-    WHEN NOT MATCHED -> insert all columns including the new payload_path.
-    """
     if not rows:
         return
     from sec_filing_analytics.bronze.schema import COMPANY_FACTS_MANIFEST_SCHEMA

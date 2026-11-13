@@ -12,8 +12,9 @@ def test_get_azure_sql_connection_properties():
     }[key]
 
     props = get_azure_sql_connection_properties(mock_dbutils, scope="azure_sql")
+    assert props["host"] == "test-server.database.windows.net"
+    assert props["database"] == "test-db"
     assert props["user"] == "test-user"
     assert props["password"] == "test-password"
-    assert "jdbc:sqlserver://test-server.database.windows.net:1433" in props["url"]
-    assert "database=test-db" in props["url"]
-    assert props["driver"] == "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+    assert props["port"] == "1433"
+    assert props["encrypt"] == "true"

@@ -1,35 +1,28 @@
 def get_azure_sql_connection_properties(dbutils, scope: str = "azure_sql") -> dict:
-    server = dbutils.secrets.get(scope=scope, key="server")
-    database = dbutils.secrets.get(scope=scope, key="database")
-    username = dbutils.secrets.get(scope=scope, key="username")
-    password = dbutils.secrets.get(scope=scope, key="password")
-
-    jdbc_url = (
-        f"jdbc:sqlserver://{server}:1433;"
-        f"database={database};"
-        f"encrypt=true;"
-        f"trustServerCertificate=false;"
-        f"hostNameInCertificate=*.database.windows.net;"
-        f"loginTimeout=30;"
-    )
     return {
-        "url": jdbc_url,
-        "user": username,
-        "password": password,
-        "driver": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+        "host": dbutils.secrets.get(scope=scope, key="server"),
+        "port": "1433",
+        "database": dbutils.secrets.get(scope=scope, key="database"),
+        "user": dbutils.secrets.get(scope=scope, key="username"),
+        "password": dbutils.secrets.get(scope=scope, key="password"),
+        "encrypt": "true",
+        "trustServerCertificate": "false",
     }
 
 
 def export_table_to_azure_sql(df, target_table: str, conn_props: dict, batch_size: int = 10000):
     (
         df.write
-        .format("jdbc")
-        .option("url", conn_props["url"])
+        .format("sqlserver")
+        .option("host", conn_props["host"])
+        .option("port", conn_props["port"])
+        .option("database", conn_props["database"])
         .option("dbtable", target_table)
         .option("user", conn_props["user"])
         .option("password", conn_props["password"])
-        .option("driver", conn_props["driver"])
-        .option("batchsize", batch_size)
+        .option("encrypt", conn_props["encrypt"])
+        .option("trustServerCertificate", conn_props["trustServerCertificate"])
+        .option("batchsize", str(batch_size))
         .option("truncate", "true")
         .mode("overwrite")
         .save()

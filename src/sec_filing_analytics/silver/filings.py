@@ -2,6 +2,9 @@
 
 import gzip
 import json
+import logging
+
+_log = logging.getLogger(__name__)
 
 
 # Forms we care about — everything else is noise.
@@ -101,8 +104,8 @@ def build_silver_filing(spark, manifest_df):
     for path, hash_ in paths:
         try:
             all_rows.extend(parse_submission_payload(path, hash_))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Skipping payload %s: %s", path, exc)
 
     from sec_filing_analytics.silver.schema import SILVER_FILING_SCHEMA
 

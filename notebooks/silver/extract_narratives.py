@@ -3,21 +3,26 @@
 # MAGIC Populates `silver.filing_narrative` with 10-K and 8-K text sections.
 
 # COMMAND ----------
-import sys
-sys.path.insert(0, "/Workspace/Users/fahimmeethale@gmail.com/sec-filing-analytics/src")
+import os, sys
 
+_nb_path   = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_repo_root = "/Workspace" + _nb_path.rsplit("/notebooks", 1)[0]
+sys.path.insert(0, os.path.join(_repo_root, "src"))
+os.chdir(_repo_root)
+
+# COMMAND ----------
 from pyspark.sql import functions as F
 from sec_filing_analytics.silver.narratives import build_narrative_rows, upsert_narratives
-from sec_filing_analytics.silver.schema import narrative_ddl
+from sec_filing_analytics.silver.schema import narrative_ddl, SILVER_NARRATIVE_SCHEMA
 
 catalog = "sec_analytics"
 
 # COMMAND ----------
-# Ensure the target table exists
+spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")
 spark.sql(narrative_ddl(catalog))
 
 # COMMAND ----------
-# Load filings that have a primary document and are relevant form types
+# Load filings relevant for narrative extraction
 relevant_forms = ["10-K", "10-K/A", "8-K", "8-K/A"]
 
 filings_df = (
@@ -27,14 +32,14 @@ filings_df = (
     .select("cik", "accession_number", "form_type", "filing_date", "primary_document")
 )
 
-# Incremental processing: only process filings not already in silver.filing_narrative
+# Incremental: skip filings already extracted
 try:
-    existing_df = (
+    done = (
         spark.table(f"{catalog}.silver.filing_narrative")
         .select("cik", "accession_number")
         .distinct()
     )
-    filings_df = filings_df.join(existing_df, on=["cik", "accession_number"], how="left_anti")
+    filings_df = filings_df.join(done, on=["cik", "accession_number"], how="left_anti")
 except Exception:
     pass
 
@@ -42,27 +47,13 @@ filing_rows = [r.asDict() for r in filings_df.collect()]
 print(f"Filings to process: {len(filing_rows)}")
 
 # COMMAND ----------
-# Build narrative rows (fetches from SEC EDGAR — takes ~30 min for full dataset)
+# Fetch and extract narrative sections from SEC EDGAR (~30 min for full dataset)
 narrative_rows = build_narrative_rows(filing_rows)
 print(f"Narrative sections extracted: {len(narrative_rows)}")
 
 # COMMAND ----------
-from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
-from pyspark.sql.types import StructType, StructField, StringType, IntegerType
-
-NARRATIVE_SCHEMA = StructType([
-    StructField("cik",              StringType(), False),
-    StructField("accession_number", StringType(), False),
-    StructField("form_type",        StringType(), False),
-    StructField("filing_date",      StringType(), True),
-    StructField("item_name",        StringType(), False),
-    StructField("text_content",     StringType(), True),
-    StructField("char_count",       IntegerType(), True),
-    StructField("source_hash",      StringType(), True),
-])
-
 if narrative_rows:
-    df = spark.createDataFrame(narrative_rows, schema=NARRATIVE_SCHEMA)
+    df = spark.createDataFrame(narrative_rows, schema=SILVER_NARRATIVE_SCHEMA)
     result = upsert_narratives(spark, df, catalog)
     print(f"silver.filing_narrative total rows: {result['total_rows']}")
 else:

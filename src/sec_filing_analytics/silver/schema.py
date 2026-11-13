@@ -38,6 +38,18 @@ SILVER_OBSERVATION_SCHEMA = StructType([
 ])
 
 
+SILVER_NARRATIVE_SCHEMA = StructType([
+    StructField("cik",              StringType(), False),
+    StructField("accession_number", StringType(), False),
+    StructField("form_type",        StringType(), False),
+    StructField("filing_date",      StringType(), True),
+    StructField("item_name",        StringType(), False),
+    StructField("text_content",     StringType(), True),
+    StructField("char_count",       IntegerType(), True),
+    StructField("source_hash",      StringType(), True),
+])
+
+
 def filing_ddl(catalog: str = "sec_analytics") -> str:
     return f"""
     CREATE TABLE IF NOT EXISTS {catalog}.silver.filing (

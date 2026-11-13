@@ -2,6 +2,9 @@
 
 import gzip
 import json
+import logging
+
+_log = logging.getLogger(__name__)
 
 
 # Canonical metric name → list of XBRL tags that mean the same thing.
@@ -69,7 +72,8 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
     with gzip.open(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
-    cik     = data.get("cik", "")
+    # Zero-pad to 10 digits to match silver.filing CIK format (SEC standard).
+    cik     = str(data.get("cik", "")).zfill(10)
     us_gaap = data.get("facts", {}).get("us-gaap", {})
 
     rows = []
@@ -163,8 +167,8 @@ def build_silver_observations(spark, manifest_df):
     for path, hash_ in paths:
         try:
             all_rows.extend(parse_facts_payload(path, hash_))
-        except Exception:
-            pass
+        except Exception as exc:
+            _log.warning("Skipping payload %s: %s", path, exc)
 
     from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
 
@@ -190,12 +194,17 @@ def _deduplicate_restatements(df):
     """
     from pyspark.sql import functions as F
     from pyspark.sql.window import Window
-    # Build a priority map: tag -> int (lower = higher priority)
-    tag_priority = {
+    # Build priority map covering both monetary and EPS tags.
+    # EPS tags have no intra-metric overlap so any unique priority works;
+    # place them after all monetary tags to avoid collision.
+    _base = sum(len(v) for v in CANONICAL_TAGS.values())
+    tag_priority: dict[str, int] = {
         tag: idx
         for metric_tags in CANONICAL_TAGS.values()
         for idx, tag in enumerate(metric_tags)
     }
+    for i, tag in enumerate(_EPS_TAG_TO_METRIC):
+        tag_priority[tag] = _base + i
     priority_expr = F.create_map(
         *[x for tag, pri in tag_priority.items() for x in (F.lit(tag), F.lit(pri))]
     )

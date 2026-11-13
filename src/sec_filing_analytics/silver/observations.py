@@ -42,6 +42,12 @@ CANONICAL_TAGS: dict[str, list[str]] = {
     ],
 }
 
+# EPS tags use USD/shares units — handled separately from monetary metrics.
+_EPS_TAG_TO_METRIC: dict[str, str] = {
+    "EarningsPerShareDiluted": "EPS Diluted",
+    "EarningsPerShareBasic":   "EPS Basic",
+}
+
 # Reverse lookup: XBRL tag → canonical metric name
 _TAG_TO_METRIC: dict[str, str] = {
     tag: metric
@@ -102,6 +108,35 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
                 "value":          float(o.get("val")) if o.get("val") is not None else None,
                 "filed_date":     o.get("filed", ""),
                 "source_hash":    source_hash,
+            })
+
+    # EPS: separate handler for USD/shares unit
+    for tag, metric in _EPS_TAG_TO_METRIC.items():
+        if tag not in us_gaap:
+            continue
+        for o in us_gaap[tag].get("units", {}).get("USD/shares", []):
+            form = o.get("form", "")
+            if form not in RELEVANT_FORMS:
+                continue
+            end = o.get("end", "")
+            if end < "2010-01-01":
+                continue
+            start = o.get("start")
+            rows.append({
+                "cik":              cik,
+                "accession_number": o.get("accn", ""),
+                "tag":              tag,
+                "metric":           metric,
+                "period_type":      "duration" if start else "instant",
+                "period_start":     start,
+                "period_end":       end,
+                "fiscal_year":      o.get("fy"),
+                "fiscal_period":    o.get("fp", ""),
+                "form_type":        form,
+                "unit":             "USD/shares",
+                "value":            float(o.get("val")) if o.get("val") is not None else None,
+                "filed_date":       o.get("filed", ""),
+                "source_hash":      source_hash,
             })
 
     return rows

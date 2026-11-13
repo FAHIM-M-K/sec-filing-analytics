@@ -58,6 +58,23 @@ def filing_ddl(catalog: str = "sec_analytics") -> str:
     """
 
 
+def narrative_ddl(catalog: str = "sec_analytics") -> str:
+    return f"""
+    CREATE TABLE IF NOT EXISTS {catalog}.silver.filing_narrative (
+        cik              STRING NOT NULL,
+        accession_number STRING NOT NULL,
+        form_type        STRING NOT NULL,
+        filing_date      STRING,
+        item_name        STRING NOT NULL,
+        text_content     STRING,
+        char_count       INT,
+        source_hash      STRING
+    )
+    USING DELTA
+    PARTITIONED BY (form_type)
+    """
+
+
 def observation_ddl(catalog: str = "sec_analytics") -> str:
     return f"""
     CREATE TABLE IF NOT EXISTS {catalog}.silver.observation (

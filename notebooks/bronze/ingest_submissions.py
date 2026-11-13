@@ -1,4 +1,7 @@
 # Databricks notebook source
+# MAGIC %md
+# MAGIC # Bronze — Ingest Company Submissions
+
 # COMMAND ----------
 # MAGIC %pip install pyyaml>=6.0 requests>=2.32 --quiet
 

@@ -132,3 +132,4 @@ def upsert_narratives(spark, df, catalog: str = "sec_analytics") -> dict:
 
     total = spark.table(table_name).count()
     return {"total_rows": total}
+

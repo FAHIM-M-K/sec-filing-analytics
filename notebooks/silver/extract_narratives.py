@@ -56,3 +56,4 @@ if narrative_rows:
     print(f"silver.filing_narrative total rows: {result['total_rows']}")
 else:
     print("No narrative rows extracted — check network access and primary_document values.")
+

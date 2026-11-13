@@ -1,6 +1,11 @@
 # Databricks notebook source
-import sys
-sys.path.insert(0, "/Workspace/Repos/sec-filing-analytics/src")
+import os, sys
+
+# COMMAND ----------
+_nb_path   = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_repo_root = "/Workspace" + _nb_path.rsplit("/notebooks", 1)[0]
+sys.path.insert(0, os.path.join(_repo_root, "src"))
+os.chdir(_repo_root)
 
 CATALOG = "sec_analytics"
 

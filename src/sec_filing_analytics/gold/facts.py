@@ -13,6 +13,7 @@ def _hash_key(F, *col_exprs):
 
 def build_fact_financial_metric(spark, catalog: str):
     from pyspark.sql import functions as F
+    from pyspark.sql.window import Window
     from sec_filing_analytics.gold.schema import GOLD_FACT_SCHEMA
 
     obs     = spark.table(f"{catalog}.silver.observation")
@@ -39,6 +40,15 @@ def build_fact_financial_metric(spark, catalog: str):
         .withColumn("filing_key",  F.coalesce(F.col("filing_key"),  F.lit(0).cast("long")))
         .withColumn("period_key",  F.coalesce(F.col("period_key"),  F.lit(0).cast("long")))
         .withColumn("metric_key",  F.coalesce(F.col("metric_key"),  F.lit(0).cast("long")))
+    )
+
+    w = Window.partitionBy("cik", "accession_number", "metric_name", "period_key").orderBy(
+        F.col("filed_date").desc(), F.col("fact_key").asc()
+    )
+    df = (
+        df
+        .withColumn("_rn", F.row_number().over(w))
+        .filter(F.col("_rn") == 1)
         .select([fld.name for fld in GOLD_FACT_SCHEMA])
     )
     return df

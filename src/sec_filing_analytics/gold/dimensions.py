@@ -52,22 +52,19 @@ def build_dim_company(spark, catalog: str, sp500_path: str):
     latest = (
         filing
         .withColumn("_rn", F.row_number().over(
-            Window.partitionBy("cik").orderBy(F.col("filing_date").desc())
+            Window.partitionBy("cik").orderBy(F.col("filing_date").desc(), F.col("accession_number").desc())
         ))
         .filter(F.col("_rn") == 1)
         .select("cik", "company_name")
     )
 
     now = datetime.now(timezone.utc)
-    ticker_map_bc = spark.sparkContext.broadcast(ticker_map)
-
-    @F.udf("string")
-    def _ticker(cik):
-        return ticker_map_bc.value.get(cik)
+    ticker_rows = [{"cik": cik, "ticker": t} for cik, t in ticker_map.items()]
+    ticker_df = spark.createDataFrame(ticker_rows) if ticker_rows else spark.createDataFrame([], "cik STRING, ticker STRING")
 
     df = (
         latest
-        .withColumn("ticker",      _ticker(F.col("cik")))
+        .join(F.broadcast(ticker_df), on="cik", how="left")
         .withColumn("updated_at",  F.lit(now).cast("timestamp"))
         .withColumn("company_key", _hash_key(F, F.col("cik")))
         .select([fld.name for fld in GOLD_DIM_COMPANY_SCHEMA])
@@ -91,13 +88,18 @@ def build_dim_filing(spark, catalog: str):
 
 def build_dim_period(spark, catalog: str):
     from pyspark.sql import functions as F
+    from pyspark.sql.window import Window
     from sec_filing_analytics.gold.schema import GOLD_DIM_PERIOD_SCHEMA
 
     obs = spark.table(f"{catalog}.silver.observation")
+    w = Window.partitionBy("period_end", "fiscal_period", "period_type").orderBy(F.col("fiscal_year").desc_nulls_last())
     df = (
         obs
         .select("period_end", "fiscal_year", "fiscal_period", "period_type")
         .distinct()
+        .withColumn("_rn", F.row_number().over(w))
+        .filter(F.col("_rn") == 1)
+        .drop("_rn")
         .withColumn("calendar_year",    F.year(F.to_date(F.col("period_end"))))
         .withColumn("calendar_quarter", F.quarter(F.to_date(F.col("period_end"))))
         .withColumn("period_key", _hash_key(F, F.col("period_end"), F.col("fiscal_period"), F.col("period_type")))

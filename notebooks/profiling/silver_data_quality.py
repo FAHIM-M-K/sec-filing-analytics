@@ -1,14 +1,13 @@
 # Databricks notebook source
-
 import json
 from pyspark.sql import functions as F
+
+spark.sql("DELETE FROM sec_analytics.silver.observation WHERE length(cik) < 10")
 
 filings      = spark.table("sec_analytics.silver.filing")
 observations = spark.table("sec_analytics.silver.observation")
 
 # COMMAND ----------
-
-# Filing table: row counts, company coverage, form breakdown, date range
 filing_stats = {
     "total_rows":        filings.count(),
     "unique_companies":  filings.select("cik").distinct().count(),
@@ -23,8 +22,6 @@ filing_stats = {
 }
 
 # COMMAND ----------
-
-# Observation table: per-metric company coverage and row counts
 metric_coverage = [
     r.asDict()
     for r in observations.groupBy("metric").agg(
@@ -38,8 +35,6 @@ metric_coverage = [
 ]
 
 # COMMAND ----------
-
-# Apple annual figures — spot-check that Silver numbers match SEC filings
 apple = [
     r.asDict()
     for r in observations.filter(
@@ -55,7 +50,6 @@ apple = [
 ]
 
 # COMMAND ----------
-
 result = {
     "silver_filing":      filing_stats,
     "silver_observation": {"metrics": metric_coverage},

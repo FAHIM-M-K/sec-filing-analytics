@@ -7,10 +7,7 @@ import logging
 _log = logging.getLogger(__name__)
 
 
-# Forms we care about — everything else is noise.
 FILING_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
-
-# Maps SEC fiscal period codes to readable labels.
 FP_MAP = {"FY": "FY", "Q1": "Q1", "Q2": "Q2", "Q3": "Q3", "Q4": "Q4"}
 
 
@@ -47,13 +44,7 @@ def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) 
 
 
 def parse_submission_payload(path: str, source_hash: str) -> list[dict]:
-    """
-    Parse one submission gzip payload into a list of filing dicts.
-
-    The main JSON holds the most recent ~1000 filings. Older filings are
-    referenced in filings.files[] as chunk file names — we follow those too
-    so the 2010 backfill is complete.
-    """
+    """Parse one submission gzip payload into filing dicts."""
     with gzip.open(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
@@ -62,17 +53,12 @@ def parse_submission_payload(path: str, source_hash: str) -> list[dict]:
 
     rows = _parse_recent_block(cik, company, data.get("filings", {}).get("recent", {}), source_hash)
 
-    # Chunk files referenced in filings.files[]
-    # Each entry has a "name" field like "CIK0000320193-submissions-001.json"
-    # They are stored alongside the main payload in the same volume directory.
     import os
     base_dir = os.path.dirname(path)
     for chunk_ref in data.get("filings", {}).get("files", []):
         chunk_name = chunk_ref.get("name", "")
         if not chunk_name:
             continue
-        # Chunk files in the volume are named after the CIK without leading zeros.
-        # Try both padded and unpadded variants.
         chunk_path = os.path.join(base_dir, chunk_name)
         if not os.path.exists(chunk_path):
             continue

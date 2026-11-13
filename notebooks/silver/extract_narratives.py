@@ -1,8 +1,4 @@
 # Databricks notebook source
-# MAGIC %md # Silver — Extract Filing Narratives
-# MAGIC Populates `silver.filing_narrative` with 10-K and 8-K text sections.
-
-# COMMAND ----------
 import os, sys
 
 _nb_path   = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
@@ -22,7 +18,6 @@ spark.sql(f"CREATE SCHEMA IF NOT EXISTS {catalog}.silver")
 spark.sql(narrative_ddl(catalog))
 
 # COMMAND ----------
-# Load filings relevant for narrative extraction
 relevant_forms = ["10-K", "10-K/A", "8-K", "8-K/A"]
 
 filings_df = (
@@ -32,7 +27,6 @@ filings_df = (
     .select("cik", "accession_number", "form_type", "filing_date", "primary_document")
 )
 
-# Incremental: skip filings already extracted
 try:
     done = (
         spark.table(f"{catalog}.silver.filing_narrative")
@@ -47,7 +41,6 @@ filing_rows = [r.asDict() for r in filings_df.collect()]
 print(f"Filings to process: {len(filing_rows)}")
 
 # COMMAND ----------
-# Fetch and extract narrative sections from SEC EDGAR (~30 min for full dataset)
 narrative_rows = build_narrative_rows(filing_rows)
 print(f"Narrative sections extracted: {len(narrative_rows)}")
 

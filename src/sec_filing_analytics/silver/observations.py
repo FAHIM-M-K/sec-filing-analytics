@@ -7,8 +7,6 @@ import logging
 _log = logging.getLogger(__name__)
 
 
-# Canonical metric name → list of XBRL tags that mean the same thing.
-# Order matters: earlier tags take priority in the canonical label assignment.
 CANONICAL_TAGS: dict[str, list[str]] = {
     "Revenue": [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -45,13 +43,11 @@ CANONICAL_TAGS: dict[str, list[str]] = {
     ],
 }
 
-# EPS tags use USD/shares units — handled separately from monetary metrics.
 _EPS_TAG_TO_METRIC: dict[str, str] = {
     "EarningsPerShareDiluted": "EPS Diluted",
     "EarningsPerShareBasic":   "EPS Basic",
 }
 
-# Reverse lookup: XBRL tag → canonical metric name
 _TAG_TO_METRIC: dict[str, str] = {
     tag: metric
     for metric, tags in CANONICAL_TAGS.items()
@@ -62,17 +58,10 @@ RELEVANT_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 
 
 def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
-    """
-    Parse one company facts gzip payload into observation dicts.
-
-    Only USD-denominated monetary facts from 10-K/10-Q filings are kept.
-    Tags not in CANONICAL_TAGS are skipped — Silver only models what the
-    product dashboard actually needs.
-    """
+    """Parse one company facts payload into observation dicts."""
     with gzip.open(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
-    # Zero-pad to 10 digits to match silver.filing CIK format (SEC standard).
     cik     = str(data.get("cik", "")).zfill(10)
     us_gaap = data.get("facts", {}).get("us-gaap", {})
 
@@ -81,10 +70,7 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
         if tag not in us_gaap:
             continue
 
-        # Only USD — EPS tags use "USD/shares", skip those for monetary metrics.
-        # We handle EPS separately later; for now only pure USD.
         usd_obs = us_gaap[tag].get("units", {}).get("USD", [])
-
         for o in usd_obs:
             form = o.get("form", "")
             if form not in RELEVANT_FORMS:
@@ -94,7 +80,7 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
             if end < "2010-01-01":
                 continue
 
-            start       = o.get("start")          # None for instant (balance sheet)
+            start       = o.get("start")
             period_type = "duration" if start else "instant"
 
             rows.append({
@@ -114,7 +100,6 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
                 "source_hash":    source_hash,
             })
 
-    # EPS: separate handler for USD/shares unit
     for tag, metric in _EPS_TAG_TO_METRIC.items():
         if tag not in us_gaap:
             continue
@@ -181,22 +166,10 @@ def build_silver_observations(spark, manifest_df):
 
 
 def _deduplicate_restatements(df):
-    """
-    Two-pass deduplication:
-
-    Pass 1 — restatements: same (cik, tag, period_end, fiscal_period, form_type) filed
-    multiple times. Keep the latest filed_date (most recent restatement wins).
-
-    Pass 2 — tag overlap: multiple XBRL tags can map to the same canonical metric for
-    the same period (e.g., a company reports both `Revenues` and
-    `RevenueFromContractWithCustomerExcludingAssessedTax`). Keep the highest-priority
-    tag, defined by its position in CANONICAL_TAGS (earlier = higher priority).
-    """
+    """Deduplicate restatements (latest filed) and overlapping tags (priority order)."""
     from pyspark.sql import functions as F
     from pyspark.sql.window import Window
-    # Build priority map covering both monetary and EPS tags.
-    # EPS tags have no intra-metric overlap so any unique priority works;
-    # place them after all monetary tags to avoid collision.
+
     _base = sum(len(v) for v in CANONICAL_TAGS.values())
     tag_priority: dict[str, int] = {
         tag: idx
@@ -209,7 +182,6 @@ def _deduplicate_restatements(df):
         *[x for tag, pri in tag_priority.items() for x in (F.lit(tag), F.lit(pri))]
     )
 
-    # Pass 1: restatement dedup — keep latest filed per tag+period
     w1 = Window.partitionBy(
         "cik", "tag", "period_end", "fiscal_period", "form_type"
     ).orderBy(F.col("filed_date").desc())
@@ -220,7 +192,6 @@ def _deduplicate_restatements(df):
         .drop("_rn1")
     )
 
-    # Pass 2: tag-overlap dedup — keep highest-priority tag per metric+period
     df = df.withColumn("_tag_pri", priority_expr[F.col("tag")])
 
     w2 = Window.partitionBy(

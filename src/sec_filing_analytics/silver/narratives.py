@@ -6,13 +6,9 @@ import time
 
 import requests
 
-# SEC rate limit: 10 req/sec max. Sleep 0.11s between requests to stay safe.
 _SLEEP = 0.11
-
 _HEADERS = {"User-Agent": "sec-filing-analytics fahimmeethale@gmail.com"}
 
-# Items to extract per form type.
-# Each entry: (item_name, start_pattern, stop_pattern)
 _10K_ITEMS = [
     (
         "Item 1A",
@@ -58,23 +54,16 @@ def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str |
         return None
 
 
-# TOC entries end with a page number: "Item 1A. Risk Factors  5" or "... 14"
-# Real body sections never end with a bare integer.
 _TOC_LINE = re.compile(r"\s+\d{1,4}\s*$")
 
 
 def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
-    """
-    Collect all regex matches for start_pat, extract text up to stop_pat,
-    discard any match that is a Table of Contents entry (ends with a bare page number),
-    return the longest surviving candidate.
-    """
+    """Extract section between start_pat and stop_pat, excluding TOC entries ending in page numbers."""
     candidates = []
     for m in re.finditer(start_pat, text, re.IGNORECASE):
         tail = text[m.start():]
         m2 = re.search(stop_pat, tail[len(m.group()):], re.IGNORECASE)
         sec = tail[: len(m.group()) + m2.start()].strip() if m2 else tail[:100_000].strip()
-        # Discard Table of Contents entries — they end with a bare page number
         if _TOC_LINE.search(sec):
             continue
         candidates.append(sec)

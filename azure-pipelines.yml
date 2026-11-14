@@ -1,0 +1,87 @@
+# SEC Financial Review Workbench - Azure DevOps CI/CD Pipeline
+
+name: $(date:yyyyMMdd)$(rev:.r)
+
+trigger:
+  branches:
+    include:
+      - main
+
+pr:
+  branches:
+    include:
+      - main
+
+variables:
+  - group: sec-analytics-devops-secrets
+  - name: PYTHON_VERSION
+    value: '3.11'
+  - name: DATABRICKS_REPO_PATH
+    value: '/Workspace/Users/fahimmeethale@gmail.com/sec-filing-analytics'
+
+stages:
+  # STAGE 1: CI Validation (Runs on PRs and Commits to main)
+  - stage: CI_Validation
+    displayName: 'CI: Lint & Unit Tests'
+    jobs:
+      - job: LintAndTest
+        displayName: 'Validate Codebase'
+        pool:
+          vmImage: 'ubuntu-latest'
+        steps:
+          - task: UsePythonVersion@0
+            displayName: 'Set Python Version'
+            inputs:
+              versionSpec: $(PYTHON_VERSION)
+
+          - script: |
+              python -m pip install --upgrade pip
+              pip install -e ".[dev]"
+            displayName: 'Install Dependencies'
+
+          - script: |
+              ruff check src tests
+              ruff format --check src tests
+            displayName: 'Ruff Lint & Format Check'
+
+          - script: |
+              pytest tests/unit
+            displayName: 'Execute Unit Tests'
+
+  # STAGE 2: CD Delivery (Runs on merge to main only)
+  - stage: CD_Delivery
+    displayName: 'CD: Deploy to Databricks'
+    dependsOn: CI_Validation
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    jobs:
+      - deployment: DeployDatabricksGitFolder
+        displayName: 'Update Databricks Git Folder'
+        pool:
+          vmImage: 'ubuntu-latest'
+        environment: 'production'
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - task: UsePythonVersion@0
+                  inputs:
+                    versionSpec: $(PYTHON_VERSION)
+
+                - script: |
+                    curl -fsSL https://raw.githubusercontent.com/databricks/setup-cli/main/install.sh | sh
+                  displayName: 'Install Databricks CLI'
+
+                - script: |
+                    echo "Configuring Databricks CLI..."
+                    cat <<EOF > ~/.databrickscfg
+                    [DEFAULT]
+                    host = $(DATABRICKS_HOST)
+                    token = $(DATABRICKS_TOKEN)
+                    EOF
+                  displayName: 'Configure Databricks CLI Auth'
+
+                - script: |
+                    echo "Updating Databricks Git folder to latest main commit..."
+                    databricks repos update $(DATABRICKS_REPO_PATH) --branch main
+                    echo "Databricks Git folder successfully updated to revision: $(Build.SourceVersion)"
+                  displayName: 'Sync Validated Revision to Databricks'

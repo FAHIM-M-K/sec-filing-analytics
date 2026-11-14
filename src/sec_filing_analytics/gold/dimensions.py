@@ -27,18 +27,19 @@ def _hash_key(F, *col_exprs):
     ).cast(LongType())
 
 
-def _load_sp500_ticker_map(sp500_path: str) -> dict[str, str]:
-    ticker_map: dict[str, str] = {}
+def _load_sp500_universe(sp500_path: str) -> list[dict]:
+    universe: list[dict] = []
     if not os.path.exists(sp500_path):
-        _log.warning("sp500.csv not found at %s — tickers will be null", sp500_path)
-        return ticker_map
+        _log.warning("sp500.csv not found at %s", sp500_path)
+        return universe
     with open(sp500_path, newline="", encoding="utf-8") as f:
         for row in csv.DictReader(f):
-            cik = row["CIK"].strip().zfill(10)
-            ticker = row["Ticker"].strip()
-            if cik and ticker:
-                ticker_map[cik] = ticker
-    return ticker_map
+            cik = row.get("CIK", "").strip().zfill(10)
+            ticker = row.get("Ticker", "").strip()
+            name = row.get("Company Name", "").strip()
+            if cik:
+                universe.append({"cik": cik, "ticker": ticker, "csv_name": name})
+    return universe
 
 
 def build_dim_company(spark, catalog: str, sp500_path: str):
@@ -46,7 +47,8 @@ def build_dim_company(spark, catalog: str, sp500_path: str):
     from pyspark.sql.window import Window
     from sec_filing_analytics.gold.schema import GOLD_DIM_COMPANY_SCHEMA
 
-    ticker_map = _load_sp500_ticker_map(sp500_path)
+    univ_rows = _load_sp500_universe(sp500_path)
+    univ_df = spark.createDataFrame(univ_rows) if univ_rows else spark.createDataFrame([], "cik STRING, ticker STRING, csv_name STRING")
 
     filing = spark.table(f"{catalog}.silver.filing")
     latest = (
@@ -59,12 +61,12 @@ def build_dim_company(spark, catalog: str, sp500_path: str):
     )
 
     now = datetime.now(timezone.utc)
-    ticker_rows = [{"cik": cik, "ticker": t} for cik, t in ticker_map.items()]
-    ticker_df = spark.createDataFrame(ticker_rows) if ticker_rows else spark.createDataFrame([], "cik STRING, ticker STRING")
 
+    # Outer join universe with filings to guarantee all 500 companies exist in dim_company
     df = (
-        latest
-        .join(F.broadcast(ticker_df), on="cik", how="left")
+        univ_df
+        .join(latest, on="cik", how="full_outer")
+        .withColumn("company_name", F.coalesce(F.col("company_name"), F.col("csv_name"), F.col("ticker"), F.lit("Unknown")))
         .withColumn("updated_at",  F.lit(now).cast("timestamp"))
         .withColumn("company_key", _hash_key(F, F.col("cik")))
         .select([fld.name for fld in GOLD_DIM_COMPANY_SCHEMA])
@@ -81,13 +83,65 @@ def build_dim_filing(spark, catalog: str):
         filing
         .withColumn("is_amendment", F.col("form_type").rlike(r"/A$"))
         .withColumn("filing_key",   _hash_key(F, F.col("accession_number")))
+        .withColumn(
+            "sec_url",
+            F.when(
+                F.col("primary_document").isNotNull(),
+                F.concat(
+                    F.lit("https://www.sec.gov/Archives/edgar/data/"),
+                    F.regexp_replace(F.col("cik"), r"^0+", ""),
+                    F.lit("/"),
+                    F.regexp_replace(F.col("accession_number"), r"-", ""),
+                    F.lit("/"),
+                    F.col("primary_document"),
+                ),
+            ).otherwise(
+                F.concat(
+                    F.lit("https://www.sec.gov/edgar/browse/?CIK="),
+                    F.regexp_replace(F.col("cik"), r"^0+", ""),
+                )
+            ),
+        )
         .select([fld.name for fld in GOLD_DIM_FILING_SCHEMA])
     )
+
+    # Ingest historical filings referenced in observation data but absent from filings
+    try:
+        obs = spark.table(f"{catalog}.silver.observation")
+        existing_accns = filing.select("accession_number").distinct()
+        missing_filings = (
+            obs
+            .filter(F.col("accession_number").isNotNull() & (F.col("accession_number") != ""))
+            .join(existing_accns, on="accession_number", how="left_anti")
+            .groupBy("accession_number", "cik")
+            .agg(
+                F.first("form_type").alias("form_type"),
+                F.first("filed_date").alias("filing_date"),
+                F.first("fiscal_year").alias("fiscal_year"),
+                F.first("fiscal_period").alias("fiscal_period"),
+                F.first("period_end").alias("report_date"),
+            )
+            .withColumn("is_amendment", F.col("form_type").rlike(r"/A$"))
+            .withColumn("primary_document", F.lit(None).cast("string"))
+            .withColumn("filing_key", _hash_key(F, F.col("accession_number")))
+            .withColumn(
+                "sec_url",
+                F.concat(
+                    F.lit("https://www.sec.gov/edgar/browse/?CIK="),
+                    F.regexp_replace(F.col("cik"), r"^0+", ""),
+                )
+            )
+            .select([fld.name for fld in GOLD_DIM_FILING_SCHEMA])
+        )
+        df = df.unionByName(missing_filings)
+    except Exception as exc:
+        _log.warning("Could not backfill filings from observations: %s", exc)
+
     sentinel = spark.createDataFrame(
         [{"filing_key": 0, "accession_number": "UNKNOWN", "cik": "UNKNOWN",
           "form_type": "HISTORICAL/UNTRACKED", "filing_date": None,
           "fiscal_year": None, "fiscal_period": None, "report_date": None,
-          "is_amendment": False}],
+          "is_amendment": False, "primary_document": None, "sec_url": None}],
         schema=GOLD_DIM_FILING_SCHEMA,
     )
     return df.union(sentinel)

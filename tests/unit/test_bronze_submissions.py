@@ -1,7 +1,6 @@
 import gzip
 import json
 from datetime import datetime, timezone
-from pathlib import Path
 
 from sec_filing_analytics.bronze.submissions import (
     SubmissionFetchResult,

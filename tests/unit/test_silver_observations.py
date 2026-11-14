@@ -3,8 +3,6 @@ import json
 import os
 import tempfile
 
-import pytest
-
 from sec_filing_analytics.silver.observations import parse_facts_payload, _TAG_TO_METRIC, CANONICAL_TAGS
 
 

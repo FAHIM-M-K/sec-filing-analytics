@@ -3,8 +3,6 @@ import json
 import os
 import tempfile
 
-import pytest
-
 from sec_filing_analytics.silver.filings import parse_submission_payload, _parse_recent_block
 
 
@@ -18,13 +16,13 @@ SAMPLE_SUBMISSION = {
     "name": "Apple Inc.",
     "filings": {
         "recent": {
-            "form":            ["10-K", "10-Q", "8-K", "10-K"],
-            "filingDate":      ["2024-11-01", "2024-08-02", "2024-07-30", "2009-10-27"],
-            "reportDate":      ["2024-09-28", "2024-06-29", "", "2009-09-26"],
-            "accessionNumber": ["0000320193-24-000123", "0000320193-24-000100", "0000320193-24-000099", "0000320193-09-000050"],
-            "primaryDocument": ["aapl-20240928.htm", "aapl-20240629.htm", "aapl-20240730.htm", "aapl-20090926.htm"],
-            "fp":              ["FY", "Q3", "", "FY"],
-            "fy":              [2024, 2024, None, 2009],
+            "form":            ["10-K", "10-Q", "8-K", "10-K", "10-K"],
+            "filingDate":      ["2024-11-01", "2024-08-02", "2024-07-30", "2009-10-27", "2008-10-27"],
+            "reportDate":      ["2024-09-28", "2024-06-29", "", "2009-09-26", "2008-09-27"],
+            "accessionNumber": ["0000320193-24-000123", "0000320193-24-000100", "0000320193-24-000099", "0000320193-09-000050", "0000320193-08-000050"],
+            "primaryDocument": ["aapl-20240928.htm", "aapl-20240629.htm", "aapl-20240730.htm", "aapl-20090926.htm", "aapl-20080927.htm"],
+            "fp":              ["FY", "Q3", "", "FY", "FY"],
+            "fy":              [2024, 2024, None, 2009, 2008],
         },
         "files": [],
     },
@@ -43,14 +41,14 @@ def test_parse_filters_non_financial_forms():
         os.unlink(path)
 
 
-def test_parse_filters_pre_2010():
+def test_parse_filters_pre_2009():
     with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
         path = tmp.name
     try:
         _write_gz(path, SAMPLE_SUBMISSION)
         rows = parse_submission_payload(path, "hash123")
         for r in rows:
-            assert r["filing_date"] >= "2010-01-01", f"Pre-2010 row leaked: {r}"
+            assert r["filing_date"] >= "2009-01-01", f"Pre-2009 row leaked: {r}"
     finally:
         os.unlink(path)
 
@@ -61,8 +59,8 @@ def test_parse_returns_correct_count():
     try:
         _write_gz(path, SAMPLE_SUBMISSION)
         rows = parse_submission_payload(path, "hash123")
-        # Only the 2024 10-K and Q3 10-Q should pass; 8-K and 2009 10-K are filtered
-        assert len(rows) == 2
+        # Only the 2024 10-K, Q3 10-Q, and 2009 10-K should pass; 8-K and 2008 10-K are filtered
+        assert len(rows) == 3
     finally:
         os.unlink(path)
 

@@ -1,4 +1,5 @@
-﻿import hashlib
+import hashlib
+import html
 import re
 import time
 
@@ -36,11 +37,16 @@ def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str |
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=20)
         if resp.status_code != 200:
+            import logging
+            logging.getLogger(__name__).warning("SEC fetch returned HTTP %s for %s", resp.status_code, url)
             return None
         text = re.sub(r"<[^>]+>", " ", resp.text)
+        text = html.unescape(text)
         text = re.sub(r"\s+", " ", text)
         return text
-    except Exception:
+    except Exception as exc:
+        import logging
+        logging.getLogger(__name__).warning("SEC fetch exception for %s: %s", url, exc)
         return None
 
 
@@ -53,7 +59,10 @@ def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
         tail = text[m.start():]
         m2 = re.search(stop_pat, tail[len(m.group()):], re.IGNORECASE)
         sec = tail[: len(m.group()) + m2.start()].strip() if m2 else tail[:100_000].strip()
-        if _TOC_LINE.search(sec):
+        # Table of contents entries are brief lines ending in a page number (< 1000 chars)
+        if len(sec) < 1000 and _TOC_LINE.search(sec):
+            continue
+        if len(sec) < 200:
             continue
         candidates.append(sec)
     if not candidates:

@@ -21,6 +21,8 @@ GOLD_DIM_FILING_SCHEMA = StructType([
     StructField("fiscal_period",     StringType(), True),
     StructField("report_date",       StringType(), True),
     StructField("is_amendment",      BooleanType(), True),
+    StructField("primary_document",  StringType(), True),
+    StructField("sec_url",           StringType(), True),
 ])
 
 GOLD_DIM_PERIOD_SCHEMA = StructType([
@@ -92,7 +94,9 @@ CREATE TABLE IF NOT EXISTS {catalog}.gold.dim_filing (
     fiscal_year      INT,
     fiscal_period    STRING,
     report_date      STRING,
-    is_amendment     BOOLEAN
+    is_amendment     BOOLEAN,
+    primary_document STRING,
+    sec_url          STRING
 )
 USING DELTA
 """

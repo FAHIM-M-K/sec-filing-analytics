@@ -28,16 +28,30 @@ filings_df = (
 )
 
 try:
+    # A filing is only completely done if both key narrative items were extracted
     done = (
         spark.table(f"{catalog}.silver.filing_narrative")
+        .groupBy("cik", "accession_number")
+        .agg(F.countDistinct("item_name").alias("item_cnt"))
+        .filter(F.col("item_cnt") >= 2)
         .select("cik", "accession_number")
-        .distinct()
     )
     filings_df = filings_df.join(done, on=["cik", "accession_number"], how="left_anti")
 except Exception:
     pass
 
-filing_rows = [r.asDict() for r in filings_df.collect()]
+from pyspark.sql.window import Window
+
+w = Window.partitionBy("cik").orderBy(F.col("filing_date").desc())
+filings_to_run = (
+    filings_df
+    .withColumn("rn", F.row_number().over(w))
+    .filter(F.col("rn") == 1)
+    .drop("rn")
+    .orderBy(F.col("filing_date").desc())
+)
+
+filing_rows = [r.asDict() for r in filings_to_run.collect()]
 print(f"Filings to process: {len(filing_rows)}")
 
 # COMMAND ----------

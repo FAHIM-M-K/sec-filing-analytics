@@ -11,11 +11,18 @@ CANONICAL_TAGS: dict[str, list[str]] = {
         "Revenues",
         "SalesRevenueNet",
         "SalesRevenueGoodsNet",
+        "RevenuesNetOfInterestExpense",
+        "InterestAndDividendIncomeOperating",
+        "RegulatedAndUnregulatedOperatingRevenue",
+        "OperatingLeaseLeaseIncome",
+        "OilAndGasRevenue",
+        "SalesRevenueServicesNet",
     ],
     "Net Income": [
         "NetIncomeLoss",
         "ProfitLoss",
         "NetIncomeLossAvailableToCommonStockholdersDiluted",
+        "NetIncomeLossAvailableToCommonStockholdersBasic",
     ],
     "Operating Income": [
         "OperatingIncomeLoss",
@@ -34,6 +41,7 @@ CANONICAL_TAGS: dict[str, list[str]] = {
     "Long-term Debt": [
         "LongTermDebt",
         "LongTermDebtNoncurrent",
+        "LongTermDebtAndCapitalLeaseObligations",
     ],
     "Operating Cash Flow": [
         "NetCashProvidedByUsedInOperatingActivities",

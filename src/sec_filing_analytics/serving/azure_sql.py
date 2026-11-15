@@ -28,6 +28,7 @@ def export_table_to_azure_sql(df, target_table: str, conn_props: dict, batch_siz
         .save()
     )
 
+
 def execute_azure_sql_ddl(spark, conn_props: dict, ddl_statements: list[str]):
     jvm = spark._sc._gateway.jvm
     url = f"jdbc:sqlserver://{conn_props['host']}:{conn_props['port']};databaseName={conn_props['database']};encrypt={conn_props['encrypt']};trustServerCertificate={conn_props['trustServerCertificate']}"

@@ -16,6 +16,7 @@ BEGIN
 END;
 """
 
+
 def azure_sql_dim_filing_ddl() -> str:
     return """
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'dim_filing' AND schema_id = SCHEMA_ID('dbo'))

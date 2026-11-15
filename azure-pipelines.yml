@@ -27,7 +27,7 @@ stages:
       - job: LintAndTest
         displayName: 'Validate Codebase'
         pool:
-          vmImage: 'ubuntu-latest'
+          vmImage: 'ubuntu-22.04'
         steps:
           - task: UsePythonVersion@0
             displayName: 'Set Python Version'
@@ -56,7 +56,7 @@ stages:
       - deployment: DeployDatabricksGitFolder
         displayName: 'Update Databricks Git Folder'
         pool:
-          vmImage: 'ubuntu-latest'
+          vmImage: 'ubuntu-22.04'
         environment: 'production'
         strategy:
           runOnce:

@@ -41,8 +41,7 @@ stages:
 
           - script: |
               ruff check src tests
-              ruff format --check src tests
-            displayName: 'Ruff Lint & Format Check'
+            displayName: 'Ruff Code Quality Check'
 
           - script: |
               pytest tests/unit

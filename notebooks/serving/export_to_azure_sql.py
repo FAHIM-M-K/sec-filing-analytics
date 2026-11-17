@@ -22,10 +22,19 @@ requested_tables = [
 if not requested_tables:
     raise ValueError("Select export tables in the tables_to_export widget; full export is disabled by default.")
 
-# This notebook defaults to the two tables changed by the period-grain repair.
-from sec_filing_analytics.serving.azure_sql import export_gold_to_azure_sql
+# Reload the workspace source so a notebook rerun cannot keep an older exporter
+# cached after the Git folder is synced.
+import importlib
+import inspect
+from sec_filing_analytics.serving import azure_sql
 
-results = export_gold_to_azure_sql(
+azure_sql = importlib.reload(azure_sql)
+if "table_names" not in inspect.signature(azure_sql.export_gold_to_azure_sql).parameters:
+    raise RuntimeError(
+        f"Stale Azure SQL exporter loaded from {azure_sql.__file__}; sync the project Git folder and rerun."
+    )
+
+results = azure_sql.export_gold_to_azure_sql(
     spark,
     dbutils,
     catalog=CATALOG,

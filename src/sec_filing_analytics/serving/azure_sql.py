@@ -103,18 +103,10 @@ def export_gold_to_azure_sql(
     scope: str = "azure_sql",
     table_names: list[str] | None = None,
 ) -> dict:
-    from sec_filing_analytics.serving.schema import get_all_serving_ddls, get_serving_migration_ddls
-
-    conn_props = get_azure_sql_connection_properties(dbutils, scope)
-
-    if hasattr(spark, "_sc") and spark._sc is not None:
-        try:
-            execute_azure_sql_ddl(spark, conn_props, get_all_serving_ddls() + get_serving_migration_ddls())
-        except Exception as exc:
-            _log.exception("Azure SQL schema setup failed")
-            raise RuntimeError("Azure SQL schema setup failed; export was not started") from exc
-    else:
-        raise RuntimeError("Azure SQL schema setup requires an active Spark JVM gateway")
+    from sec_filing_analytics.serving.schema import (
+        get_serving_ddls_for_tables,
+        get_serving_migrations_for_tables,
+    )
 
     tables_to_export = [
         ("dim_company",           f"{catalog}.gold.dim_company",           "dbo.dim_company"),
@@ -126,11 +118,27 @@ def export_gold_to_azure_sql(
         ("fact_corporate_event",  f"{catalog}.gold.fact_corporate_event",  "dbo.fact_corporate_event"),
     ]
     tables_to_export = select_tables_to_export(tables_to_export, table_names)
+    selected_names = [name for name, _, _ in tables_to_export]
+
+    conn_props = get_azure_sql_connection_properties(dbutils, scope)
+
+    if hasattr(spark, "_sc") and spark._sc is not None:
+        try:
+            ddl_statements = get_serving_ddls_for_tables(selected_names)
+            ddl_statements += get_serving_migrations_for_tables(selected_names)
+            execute_azure_sql_ddl(spark, conn_props, ddl_statements)
+        except Exception as exc:
+            _log.exception("Azure SQL schema setup failed")
+            raise RuntimeError("Azure SQL schema setup failed; export was not started") from exc
+    else:
+        raise RuntimeError("Azure SQL schema setup requires an active Spark JVM gateway")
 
     results = {}
     for name, src, dest in tables_to_export:
         df = spark.table(src)
         cnt = df.count()
+        if name in {"dim_reporting_period", "fact_financial_metric"} and cnt == 0:
+            raise RuntimeError(f"Gold source {src} is empty; refusing to truncate {dest}.")
         sql_columns = truncate_sql_table_after_schema_check(spark, df, dest, conn_props)
         # Azure SQL ALTER TABLE appends migrated columns to the physical schema;
         # align write order with SQL metadata before connector append mode.

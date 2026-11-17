@@ -20,7 +20,7 @@ def iter_submission_history_chunks(
 
         chunk_path = base_dir / name
         compressed_path = base_dir / f"{name}.gz"
-        if not chunk_path.exists() and compressed_path.exists():
+        if compressed_path.exists():
             chunk_path = compressed_path
         if not chunk_path.exists():
             raise FileNotFoundError(

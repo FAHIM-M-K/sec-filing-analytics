@@ -80,7 +80,7 @@ def land_submission_history_files(
                     cached_payload = json.load(chunk_file)
                 if isinstance(cached_payload, dict):
                     continue
-            except (OSError, EOFError, json.JSONDecodeError):
+            except (OSError, EOFError, UnicodeError, json.JSONDecodeError):
                 pass
 
         chunk_payload = client.get_submission_history_file(name)

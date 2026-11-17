@@ -9,10 +9,13 @@ except ImportError:
             self.name = kwargs.get("name", args[0] if args and isinstance(args[0], str) else "")
             self.fields = args[0] if args and isinstance(args[0], list) else []
             self.dataType = self
+
         def simpleString(self):
             return "string"
+
         def __iter__(self):
             return iter(self.fields)
+
         def __call__(self, *args, **kwargs):
             return self
     StructType = StructField = StringType = LongType = IntegerType = DoubleType = BooleanType = TimestampType = _StubType

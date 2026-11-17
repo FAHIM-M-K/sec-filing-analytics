@@ -19,7 +19,14 @@ from sec_filing_analytics.gold.facts import build_fact_financial_metric
 df = build_fact_financial_metric(spark, CATALOG)
 # Full replacement is required after changing period grain: old fact keys must
 # not coexist with the rebuilt period dimension.
-(df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
- .partitionBy("metric_name").saveAsTable(f"{CATALOG}.gold.fact_financial_metric"))
-result = {"total_rows": spark.table(f"{CATALOG}.gold.fact_financial_metric").count()}
+df.persist()
+try:
+    fact_count = df.count()
+    if fact_count == 0:
+        raise RuntimeError("Financial fact rebuild is empty; refusing to replace the existing fact table.")
+    (df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+     .partitionBy("metric_name").saveAsTable(f"{CATALOG}.gold.fact_financial_metric"))
+    result = {"total_rows": fact_count}
+finally:
+    df.unpersist()
 print("fact_financial_metric:", result)

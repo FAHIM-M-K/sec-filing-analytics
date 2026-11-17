@@ -130,16 +130,10 @@ def parse_submission_events(path: str, source_hash: str) -> list[dict[str, Any]]
 
 def build_silver_corporate_events(spark: Any, manifest_df: Any) -> Any:
     """Read all Bronze submission payloads from manifest and parse high-impact 8-K events."""
-    from sec_filing_analytics.silver.manifests import latest_payload_manifest
+    from sec_filing_analytics.silver.manifests import latest_payload_paths
     from sec_filing_analytics.silver.schema import SILVER_CORPORATE_EVENT_SCHEMA
 
-    current_manifest = latest_payload_manifest(manifest_df)
-    paths = [
-        (r["payload_path"], r["content_hash"])
-        for r in current_manifest
-        .select("payload_path", "content_hash")
-        .collect()
-    ]
+    paths = latest_payload_paths(manifest_df)
 
     all_rows: list[dict[str, Any]] = []
     payload_errors = []

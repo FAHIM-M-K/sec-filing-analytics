@@ -3,14 +3,13 @@
 from typing import Any
 
 
-def latest_payload_manifest(manifest_df: Any) -> Any:
-    """Return one stored payload row per CIK, ordered by fetch time and run ID."""
+def latest_payload_paths(manifest_df: Any) -> list[tuple[str, str]]:
+    """Return the newest payload path per CIK or fail rather than use stale data."""
     from pyspark.sql import functions as F
     from pyspark.sql.window import Window
 
-    return (
+    latest_rows = (
         manifest_df
-        .filter(F.col("payload_path").isNotNull())
         .withColumn(
             "_manifest_rank",
             F.row_number().over(
@@ -22,5 +21,17 @@ def latest_payload_manifest(manifest_df: Any) -> Any:
             ),
         )
         .filter(F.col("_manifest_rank") == 1)
-        .drop("_manifest_rank")
+        .select("cik", "payload_path", "content_hash")
+        .collect()
     )
+    if not latest_rows:
+        raise RuntimeError("Bronze manifest contains no payload rows; refusing a Silver rebuild.")
+
+    missing = [row["cik"] for row in latest_rows if not row["payload_path"]]
+    if missing:
+        raise RuntimeError(
+            "Latest Bronze payload path is missing for CIK(s): "
+            f"{', '.join(missing[:10])}. Refusing to use stale payloads."
+        )
+
+    return [(row["payload_path"], row["content_hash"]) for row in latest_rows]

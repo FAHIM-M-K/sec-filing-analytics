@@ -180,3 +180,24 @@ def test_spark_dedup_keeps_quarter_and_ytd_and_selects_latest_restatement():
     finally:
         spark.stop()
 
+
+def test_spark_observation_rebuild_refuses_empty_snapshot():
+    import pytest
+
+    pytest.importorskip("pyspark")
+    from pyspark.sql import SparkSession
+    from sec_filing_analytics.silver.observations import replace_silver_observations
+    from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
+
+    try:
+        spark = SparkSession.builder.master("local[1]").appName("silver-empty-rebuild-test").getOrCreate()
+    except Exception as exc:
+        pytest.skip(f"Local Spark runtime is unavailable: {exc}")
+
+    try:
+        empty = spark.createDataFrame([], SILVER_OBSERVATION_SCHEMA)
+        with pytest.raises(RuntimeError, match="refusing to replace the existing snapshot"):
+            replace_silver_observations(spark, empty, "catalog")
+    finally:
+        spark.stop()
+

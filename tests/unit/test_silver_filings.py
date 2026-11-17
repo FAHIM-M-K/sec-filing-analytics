@@ -5,6 +5,7 @@ import tempfile
 import pytest
 
 from sec_filing_analytics.silver.filings import parse_submission_payload, _parse_recent_block
+from sec_filing_analytics.silver.submission_chunks import iter_submission_history_chunks
 
 
 def _write_gz(path: str, data: dict) -> None:
@@ -104,4 +105,18 @@ def test_parse_fails_if_referenced_submission_history_chunk_is_missing(tmp_path)
 
     with pytest.raises(FileNotFoundError, match="Rerun Bronze submissions ingestion"):
         parse_submission_payload(str(path), "hash123")
+
+
+def test_submission_parser_prefers_refreshed_compressed_history_chunk(tmp_path):
+    payload_path = tmp_path / "submission.json.gz"
+    chunk_name = "CIK0000320193-submissions-001.json"
+    payload = json.loads(json.dumps(SAMPLE_SUBMISSION))
+    payload["filings"]["files"] = [{"name": chunk_name}]
+    _write_gz(str(payload_path), payload)
+    (tmp_path / chunk_name).write_text("not valid JSON", encoding="utf-8")
+    _write_gz(str(tmp_path / f"{chunk_name}.gz"), {"history": "latest"})
+
+    chunks = list(iter_submission_history_chunks(str(payload_path), payload))
+
+    assert chunks == [(chunk_name, {"history": "latest"})]
 

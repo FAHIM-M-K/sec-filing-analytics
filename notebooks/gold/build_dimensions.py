@@ -43,7 +43,14 @@ print("dim_filing:", result)
 # Period grain now includes period_start. Replace this dimension so obsolete
 # pre-period_start keys cannot remain alongside the rebuilt grain.
 period_df = build_dim_period(spark, CATALOG)
-(period_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
- .saveAsTable(f"{CATALOG}.gold.dim_reporting_period"))
-result = {"total_rows": spark.table(f"{CATALOG}.gold.dim_reporting_period").count()}
+period_df.persist()
+try:
+    period_count = period_df.count()
+    if period_count == 0:
+        raise RuntimeError("Reporting-period dimension is empty; refusing to replace the existing dimension.")
+    (period_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+     .saveAsTable(f"{CATALOG}.gold.dim_reporting_period"))
+    result = {"total_rows": period_count}
+finally:
+    period_df.unpersist()
 print("dim_reporting_period:", result)

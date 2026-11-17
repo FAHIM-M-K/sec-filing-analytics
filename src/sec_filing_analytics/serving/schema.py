@@ -164,5 +164,25 @@ def get_all_serving_ddls() -> list[str]:
     ]
 
 
+def get_serving_ddls_for_tables(table_names: list[str]) -> list[str]:
+    ddl_by_table = {
+        "dim_company": azure_sql_dim_company_ddl,
+        "dim_filing": azure_sql_dim_filing_ddl,
+        "dim_reporting_period": azure_sql_dim_period_ddl,
+        "dim_metric": azure_sql_dim_metric_ddl,
+        "fact_financial_metric": azure_sql_fact_financial_metric_ddl,
+        "fact_narrative": azure_sql_fact_narrative_ddl,
+        "fact_corporate_event": azure_sql_fact_corporate_event_ddl,
+    }
+    unknown = set(table_names) - ddl_by_table.keys()
+    if unknown:
+        raise ValueError(f"Unknown Azure SQL schema table(s): {sorted(unknown)}")
+    return [ddl_by_table[name]() for name in ddl_by_table if name in table_names]
+
+
 def get_serving_migration_ddls() -> list[str]:
     return [azure_sql_dim_period_migration_ddl()]
+
+
+def get_serving_migrations_for_tables(table_names: list[str]) -> list[str]:
+    return [azure_sql_dim_period_migration_ddl()] if "dim_reporting_period" in table_names else []

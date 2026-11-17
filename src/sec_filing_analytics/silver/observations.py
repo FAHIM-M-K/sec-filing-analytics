@@ -136,21 +136,11 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
 
 
 def build_silver_observations(spark, manifest_df):
-    from pyspark.sql import functions as F
-    from sec_filing_analytics.silver.manifests import latest_payload_manifest
+    from sec_filing_analytics.silver.manifests import latest_payload_paths
 
-    latest_manifest = latest_payload_manifest(manifest_df)
-    paths = [
-        (r["payload_path"], r["content_hash"])
-        for r in latest_manifest
-        .select("payload_path", "content_hash")
-        .collect()
-    ]
+    paths = latest_payload_paths(manifest_df)
 
     from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
-
-    if not paths:
-        return spark.createDataFrame([], schema=SILVER_OBSERVATION_SCHEMA)
 
     def parse_payload(path_hash):
         path, source_hash = path_hash
@@ -212,7 +202,13 @@ def _deduplicate_restatements(df):
 def replace_silver_observations(spark, df, catalog: str = "sec_analytics") -> dict:
     """Rebuild the observation snapshot so removed/restated facts cannot linger."""
     table_name = f"{catalog}.silver.observation"
-    (df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
-     .partitionBy("metric").saveAsTable(table_name))
-    total = spark.table(table_name).count()
-    return {"total_rows": total}
+    df.persist()
+    try:
+        total = df.count()
+        if total == 0:
+            raise RuntimeError("Parsed Silver observations are empty; refusing to replace the existing snapshot.")
+        (df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+         .partitionBy("metric").saveAsTable(table_name))
+        return {"total_rows": total}
+    finally:
+        df.unpersist()

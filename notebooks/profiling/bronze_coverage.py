@@ -1,35 +1,38 @@
 # Databricks notebook source
 
+import os, sys
 import gzip, json
 from pyspark.sql import functions as F
 
+_nb_path = dbutils.notebook.entry_point.getDbutils().notebook().getContext().notebookPath().get()
+_repo_root = "/Workspace" + _nb_path.rsplit("/notebooks", 1)[0]
+sys.path.insert(0, os.path.join(_repo_root, "src"))
+os.chdir(_repo_root)
+
+from sec_filing_analytics.silver.filings import parse_submission_payload
+from sec_filing_analytics.silver.manifests import latest_payload_paths
+
 sub_manifest   = spark.table("sec_analytics.bronze.submission_manifest")
-facts_manifest = spark.table("sec_analytics.bronze.company_facts_manifest")
 
 RELEVANT_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
 
 # COMMAND ----------
 
-all_sub_paths = [
-    r["payload_path"]
-    for r in sub_manifest.filter(F.col("payload_path").isNotNull()).select("payload_path").collect()
-]
+latest_submissions = latest_payload_paths(sub_manifest)
 
 filing_rows = []
-for path in all_sub_paths:
+parse_errors = []
+for path, source_hash in latest_submissions:
     try:
         with gzip.open(path, "rt", encoding="utf-8") as f:
             d = json.load(f)
-        forms  = d.get("filings", {}).get("recent", {}).get("form", [])
-        dates  = d.get("filings", {}).get("recent", {}).get("filingDate", [])
         chunks = d.get("filings", {}).get("files", [])
         since_2010 = [
-            {"form": forms[i], "date": dates[i]}
-            for i in range(min(len(forms), len(dates)))
-            if forms[i] in RELEVANT_FORMS and dates[i] >= "2010-01-01"
+            row for row in parse_submission_payload(path, source_hash)
+            if row["form_type"] in RELEVANT_FORMS and row["filing_date"] >= "2010-01-01"
         ]
-        annual    = [x for x in since_2010 if "10-K" in x["form"]]
-        all_dates = [x["date"] for x in since_2010]
+        annual = [row for row in since_2010 if "10-K" in row["form_type"]]
+        all_dates = [row["filing_date"] for row in since_2010]
         filing_rows.append({
             "cik":          d.get("cik", ""),
             "company":      d.get("name", ""),
@@ -37,8 +40,12 @@ for path in all_sub_paths:
             "oldest":       min(all_dates, default=""),
             "has_chunks":   len(chunks) > 0,
         })
-    except Exception:
-        pass
+    except Exception as exc:
+        parse_errors.append((path, exc))
+
+if parse_errors:
+    sample = "; ".join(f"{path}: {error}" for path, error in parse_errors[:5])
+    raise RuntimeError(f"Coverage profiling failed for {len(parse_errors)} submissions payload(s): {sample}")
 
 df = spark.createDataFrame(filing_rows)
 total        = df.count()

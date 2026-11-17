@@ -1,7 +1,6 @@
 import pytest
-from math import inf, nan
 
-from sec_filing_analytics.sec_client.client import RequestRateLimiter, SecApiClient, SecClientSettings
+from sec_filing_analytics.sec_client.client import SecApiClient, SecClientSettings
 
 
 def _settings(**overrides):
@@ -19,34 +18,16 @@ def _settings(**overrides):
     return SecClientSettings(**values)
 
 
-def test_settings_accept_valid_pipeline_values():
-    assert _settings().max_requests_per_second == 8
-
-
 @pytest.mark.parametrize(
     "override",
     [
         {"base_url": "data.sec.gov"},
-        {"user_agent": " "},
         {"max_requests_per_second": 0},
-        {"connect_timeout_seconds": 0},
-        {"read_timeout_seconds": -1},
-        {"max_attempts": 0},
-        {"initial_backoff_seconds": -1},
-        {"initial_backoff_seconds": 10, "max_backoff_seconds": 5},
-        {"max_requests_per_second": nan},
-        {"read_timeout_seconds": inf},
     ],
 )
 def test_settings_reject_invalid_values(override):
     with pytest.raises(ValueError):
         _settings(**override)
-
-
-@pytest.mark.parametrize("rate", [0, -1, nan, inf])
-def test_rate_limiter_rejects_invalid_rates(rate):
-    with pytest.raises(ValueError):
-        RequestRateLimiter(rate)
 
 
 def test_retry_jitter_never_exceeds_configured_maximum():

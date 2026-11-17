@@ -4,7 +4,7 @@ import os
 import tempfile
 import pytest
 
-from sec_filing_analytics.silver.filings import parse_submission_payload, _parse_recent_block
+from sec_filing_analytics.silver.filings import parse_submission_payload
 from sec_filing_analytics.silver.submission_chunks import iter_submission_history_chunks
 
 
@@ -31,70 +31,19 @@ SAMPLE_SUBMISSION = {
 }
 
 
-def test_parse_filters_non_financial_forms():
+def test_parse_keeps_financial_filings_and_source_hash():
     with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
         path = tmp.name
     try:
         _write_gz(path, SAMPLE_SUBMISSION)
         rows = parse_submission_payload(path, "hash123")
-        forms = {r["form_type"] for r in rows}
-        assert "8-K" not in forms
-    finally:
-        os.unlink(path)
-
-
-def test_parse_filters_pre_2009():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_SUBMISSION)
-        rows = parse_submission_payload(path, "hash123")
-        for r in rows:
-            assert r["filing_date"] >= "2009-01-01", f"Pre-2009 row leaked: {r}"
-    finally:
-        os.unlink(path)
-
-
-def test_parse_returns_correct_count():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_SUBMISSION)
-        rows = parse_submission_payload(path, "hash123")
-        # Only the 2024 10-K, Q3 10-Q, and 2009 10-K should pass; 8-K and 2008 10-K are filtered
         assert len(rows) == 3
+        assert {r["form_type"] for r in rows} == {"10-K", "10-Q"}
+        assert all(r["filing_date"] >= "2009-01-01" for r in rows)
+        assert all(r["source_hash"] == "hash123" for r in rows)
+        assert all(r["accession_number"] for r in rows)
     finally:
         os.unlink(path)
-
-
-def test_parse_sets_source_hash():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_SUBMISSION)
-        rows = parse_submission_payload(path, "myhash")
-        assert all(r["source_hash"] == "myhash" for r in rows)
-    finally:
-        os.unlink(path)
-
-
-def test_parse_sets_period_type():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_SUBMISSION)
-        rows = parse_submission_payload(path, "hash")
-        # filings.py doesn't set period_type (that's observations); accession_number present
-        for r in rows:
-            assert "accession_number" in r
-            assert r["accession_number"] != ""
-    finally:
-        os.unlink(path)
-
-
-def test_parse_recent_block_empty():
-    rows = _parse_recent_block("0000001234", "Test Co", {}, "h")
-    assert rows == []
 
 
 def test_parse_fails_if_referenced_submission_history_chunk_is_missing(tmp_path):

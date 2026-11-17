@@ -47,6 +47,30 @@ def validate_export_columns(dataframe_columns: list[str], sql_columns: list[str]
         )
 
 
+def validate_export_types(
+    dataframe_types: list[tuple[str, str]],
+    sql_types: list[tuple[str, str]],
+    target_table: str,
+) -> None:
+    spark_to_sql = {
+        "string": {"varchar", "nvarchar", "char", "nchar", "text", "ntext"},
+        "bigint": {"bigint"},
+        "int": {"int", "integer"},
+        "timestamp": {"datetime2", "datetime", "smalldatetime"},
+        "boolean": {"bit"},
+        "double": {"float"},
+    }
+    sql_by_name = {name.casefold(): sql_type.casefold() for name, sql_type in sql_types}
+    mismatches = []
+    for name, spark_type in dataframe_types:
+        allowed_sql_types = spark_to_sql.get(spark_type.casefold())
+        actual_sql_type = sql_by_name.get(name.casefold())
+        if allowed_sql_types is None or actual_sql_type not in allowed_sql_types:
+            mismatches.append(f"{name}: Gold={spark_type}, SQL={actual_sql_type}")
+    if mismatches:
+        raise ValueError(f"Type mismatch for {target_table}: {', '.join(mismatches)}")
+
+
 def truncate_sql_table_after_schema_check(spark, df, target_table: str, conn_props: dict) -> list[str]:
     if not re.fullmatch(r"dbo\.[A-Za-z_][A-Za-z0-9_]*", target_table):
         raise ValueError(f"Unsupported Azure SQL table name: {target_table}")
@@ -59,7 +83,16 @@ def truncate_sql_table_after_schema_check(spark, df, target_table: str, conn_pro
         rs = stmt.executeQuery(f"SELECT TOP (0) * FROM {target_table}")
         metadata = rs.getMetaData()
         sql_columns = [metadata.getColumnName(i) for i in range(1, metadata.getColumnCount() + 1)]
+        sql_types = [
+            (metadata.getColumnName(i), metadata.getColumnTypeName(i))
+            for i in range(1, metadata.getColumnCount() + 1)
+        ]
         validate_export_columns(df.columns, sql_columns, target_table)
+        validate_export_types(
+            [(field.name, field.dataType.simpleString()) for field in df.schema.fields],
+            sql_types,
+            target_table,
+        )
         rs.close()
         stmt.execute(f"TRUNCATE TABLE {target_table}")
         stmt.close()

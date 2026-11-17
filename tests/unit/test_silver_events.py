@@ -4,7 +4,6 @@ import os
 import tempfile
 
 from sec_filing_analytics.silver.events import (
-    clean_event_html,
     parse_item_codes,
     parse_submission_events,
 )
@@ -122,18 +121,3 @@ def test_parse_submission_events_filters_and_extracts():
         os.unlink(path)
 
 
-def test_clean_event_html():
-    raw_html = """
-    <html>
-      <body>
-        <p><b>Item 5.02 Departure of Directors or Certain Officers.</b></p>
-        <p>On August 1, 2024, the Board of Directors appointed Jane Doe as Chief Financial Officer.</p>
-      </body>
-    </html>
-    """
-    headline, body = clean_event_html(raw_html)
-    assert "Item 5.02 Departure of Directors" in body
-    assert "Jane Doe as Chief Financial Officer" in body
-    assert "<p>" not in body
-    assert len(headline) <= 250
-    assert "Item 5.02" in headline

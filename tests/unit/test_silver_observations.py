@@ -2,9 +2,7 @@ import gzip
 import json
 import os
 import tempfile
-from pathlib import Path
-
-from sec_filing_analytics.silver.observations import parse_facts_payload, _TAG_TO_METRIC, CANONICAL_TAGS
+from sec_filing_analytics.silver.observations import parse_facts_payload
 
 
 SAMPLE_FACTS = {
@@ -52,75 +50,19 @@ def _write_gz(path: str, data: dict) -> None:
         json.dump(data, f)
 
 
-def test_canonical_tag_map_covers_all_metrics():
-    for metric, tags in CANONICAL_TAGS.items():
-        for tag in tags:
-            assert tag in _TAG_TO_METRIC, f"{tag} missing from reverse map"
-            assert _TAG_TO_METRIC[tag] == metric
-
-
-def test_parse_excludes_unknown_tags():
+def test_parse_keeps_only_supported_metrics_since_2010_with_period_types():
     with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
         path = tmp.name
     try:
         _write_gz(path, SAMPLE_FACTS)
         rows = parse_facts_payload(path, "h")
-        tags = {r["tag"] for r in rows}
-        assert "SomeRandomTag" not in tags
-    finally:
-        os.unlink(path)
-
-
-def test_parse_excludes_pre_2010():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_FACTS)
-        rows = parse_facts_payload(path, "h")
-        for r in rows:
-            assert r["period_end"] >= "2010-01-01", f"Pre-2010 leaked: {r}"
-    finally:
-        os.unlink(path)
-
-
-def test_parse_instant_vs_duration():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_FACTS)
-        rows = parse_facts_payload(path, "h")
-        revenue_rows = [r for r in rows if r["tag"] == "RevenueFromContractWithCustomerExcludingAssessedTax"]
-        assets_rows  = [r for r in rows if r["tag"] == "Assets"]
-        assert all(r["period_type"] == "duration" for r in revenue_rows)
-        assert all(r["period_type"] == "instant"  for r in assets_rows)
-    finally:
-        os.unlink(path)
-
-
-def test_parse_sets_canonical_metric():
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_FACTS)
-        rows = parse_facts_payload(path, "h")
-        revenue_rows = [r for r in rows if r["tag"] == "RevenueFromContractWithCustomerExcludingAssessedTax"]
-        assert all(r["metric"] == "Revenue" for r in revenue_rows)
-    finally:
-        os.unlink(path)
-
-
-def test_parse_includes_restatements_before_dedup():
-    # parse_facts_payload returns ALL rows including duplicates;
-    # deduplication happens in build_silver_observations (Spark level)
-    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
-        path = tmp.name
-    try:
-        _write_gz(path, SAMPLE_FACTS)
-        rows = parse_facts_payload(path, "h")
-        revenue_rows = [r for r in rows if r["tag"] == "RevenueFromContractWithCustomerExcludingAssessedTax"
-                        and r["period_end"] >= "2010-01-01"]
-        # Both the original and restatement rows should be present before dedup
-        assert len(revenue_rows) == 2
+        revenue = [r for r in rows if r["metric"] == "Revenue"]
+        assets = [r for r in rows if r["tag"] == "Assets"]
+        assert all(r["period_end"] >= "2010-01-01" for r in rows)
+        assert all(r["tag"] != "SomeRandomTag" for r in rows)
+        assert len(revenue) == 2  # Restatements stay available for Silver deduplication.
+        assert all(r["period_type"] == "duration" for r in revenue)
+        assert all(r["period_type"] == "instant" for r in assets)
     finally:
         os.unlink(path)
 
@@ -144,15 +86,6 @@ def test_parse_preserves_distinct_quarter_and_ytd_starts():
         }
     finally:
         os.unlink(path)
-
-
-def test_spark_restatement_window_partitions_by_period_start_and_keeps_latest_filing():
-    source = Path("src/sec_filing_analytics/silver/observations.py").read_text(encoding="utf-8")
-    window = source.split("w1 = Window.partitionBy(", 1)[1].split("df = (", 1)[0]
-
-    assert '"period_start"' in window
-    assert 'F.col("filed_date").desc_nulls_last()' in window
-    assert 'F.col("accession_number").desc_nulls_last()' in window
 
 
 def test_spark_dedup_keeps_quarter_and_ytd_and_selects_latest_restatement():

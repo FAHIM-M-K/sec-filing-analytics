@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import gzip
-import html
 import json
-import re
 from typing import Any
 
 EVENT_FORMS = {"8-K", "8-K/A"}
@@ -41,21 +39,6 @@ def parse_item_codes(raw_items: Any) -> list[str]:
         if code in TARGET_8K_ITEMS and code not in cleaned:
             cleaned.append(code)
     return cleaned
-
-
-def clean_event_html(raw_html: str) -> tuple[str, str]:
-    """Strip HTML tags and extract a headline and normalized body text.
-    
-    Returns:
-        tuple[headline, cleaned_body]
-    """
-    if not raw_html:
-        return "", ""
-    text = re.sub(r"<[^>]+>", " ", raw_html)
-    text = html.unescape(text)
-    text = re.sub(r"\s+", " ", text).strip()
-    headline = text[:250].rsplit(" ", 1)[0] if len(text) > 250 else text
-    return headline, text
 
 
 def _parse_recent_events_block(

@@ -70,6 +70,8 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
 
 def _parse_facts_text(content: str, source_hash: str, path: str) -> list[dict]:
     try:
+        if not content:
+            raise ValueError("Spark text reader returned empty content")
         data = json.loads(content)
         return _parse_facts_data(data, source_hash)
     except Exception as exc:
@@ -181,14 +183,17 @@ def build_silver_observations(spark, manifest_df):
     from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
 
     paths = latest_payload_paths(manifest_df)
-    manifest = spark.createDataFrame(paths, ["payload_path", "source_hash"])
+    manifest = spark.createDataFrame(
+        [(path, source_hash, path.rsplit("/", 1)[-1]) for path, source_hash in paths],
+        ["payload_path", "source_hash", "payload_file_name"],
+    )
     payload_files = (
         spark.read.format("text")
         .option("wholetext", True)
         .load([path for path, _ in paths])
-        .select(F.col("_metadata.file_path").alias("payload_path"), F.col("value").alias("content"))
+        .select(F.col("_metadata.file_name").alias("payload_file_name"), F.col("value").alias("content"))
     )
-    payloads = manifest.join(payload_files, on="payload_path", how="left")
+    payloads = manifest.join(payload_files, on="payload_file_name", how="left")
     parse_payload = F.udf(_parse_facts_text, ArrayType(SILVER_OBSERVATION_SCHEMA))
     df = (
         payloads

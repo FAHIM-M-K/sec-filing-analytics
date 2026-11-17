@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 import tempfile
+import pytest
 from sec_filing_analytics.silver.observations import (
     _parse_facts_data,
     _parse_facts_text,
@@ -62,6 +63,8 @@ def test_parse_keeps_only_supported_metrics_since_2010_with_period_types():
         rows = parse_facts_payload(path, "h")
         with gzip.open(path, "rt", encoding="utf-8") as payload:
             assert _parse_facts_text(payload.read(), "h", path) == rows
+        with pytest.raises(RuntimeError, match="Spark text reader returned empty content"):
+            _parse_facts_text("", "h", path)
         revenue = [r for r in rows if r["metric"] == "Revenue"]
         assets = [r for r in rows if r["tag"] == "Assets"]
         assert all(r["period_end"] >= "2010-01-01" for r in rows)

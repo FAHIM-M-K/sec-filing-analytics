@@ -14,7 +14,6 @@ from sec_filing_analytics.gold.schema import (
 from sec_filing_analytics.serving.azure_sql import (
     select_tables_to_export,
     validate_export_columns,
-    validate_export_types,
 )
 from sec_filing_analytics.serving.schema import (
     get_all_serving_ddls,
@@ -33,15 +32,6 @@ def test_period_start_migration_is_idempotent():
 def test_export_schema_rejects_mismatch_before_table_truncation():
     with pytest.raises(ValueError, match="Schema mismatch for dbo.dim_reporting_period"):
         validate_export_columns(["period_key", "period_start"], ["period_key"], "dbo.dim_reporting_period")
-
-
-def test_export_type_validation_rejects_mismatch_before_truncation():
-    with pytest.raises(ValueError, match="period_start: Gold=string, SQL=datetime2"):
-        validate_export_types(
-            [("period_start", "string")],
-            [("period_start", "datetime2")],
-            "dbo.dim_reporting_period",
-        )
 
 
 def test_export_table_selection_keeps_unrelated_tables_out_of_rebuild():

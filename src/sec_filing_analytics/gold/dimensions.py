@@ -215,22 +215,6 @@ def upsert_dim_filing(spark, df, catalog: str) -> dict:
     return {"total_rows": spark.table(tbl).count()}
 
 
-def upsert_dim_period(spark, df, catalog: str) -> dict:
-    from delta.tables import DeltaTable
-    tbl = f"{catalog}.gold.dim_reporting_period"
-    (
-        DeltaTable.forName(spark, tbl).alias("t")
-        .merge(
-            df.alias("s"),
-            "t.period_start <=> s.period_start AND t.period_end = s.period_end AND t.fiscal_period = s.fiscal_period AND t.period_type = s.period_type",
-        )
-        .whenMatchedUpdateAll()
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
-    return {"total_rows": spark.table(tbl).count()}
-
-
 def upsert_dim_metric(spark, df, catalog: str) -> dict:
     from delta.tables import DeltaTable
     tbl = f"{catalog}.gold.dim_metric"

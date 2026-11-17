@@ -26,7 +26,14 @@ For the business purpose, architecture, data model, and interview talking points
 - Uses four latest discrete quarter-length revenue observations for LTM when they form a complete one-year window; if not, Power BI falls back to the latest annual revenue period. Both paths exclude periods before 2010.
 - Builds Delta Lake Silver and Gold tables, then exports the Gold model to Azure SQL for Power BI.
 
-After deploying a version that changes the reporting-period grain, run `silver/transform_observations` to rebuild the period-preserving Silver snapshot, then `gold/build_dimensions`, `gold/build_facts`, and `serving/export_to_azure_sql` in that order. For this migration, set the export notebook's `tables_to_export` widget to `dim_reporting_period,fact_financial_metric`; this preserves unrelated Azure SQL tables. The export applies an additive migration for `dim_reporting_period.period_start`, validates Gold/SQL columns, and appends in the SQL table's physical column order. Refresh the Power BI model after the export completes.
+After deploying a version that changes the reporting-period grain, run `silver/transform_observations` to rebuild the period-preserving Silver snapshot, then `gold/build_dimensions` and `gold/build_facts`. Before exporting, run this idempotent statement in the Azure SQL Query Editor to add the new period start column:
+
+```sql
+IF COL_LENGTH('dbo.dim_reporting_period', 'period_start') IS NULL
+    ALTER TABLE dbo.dim_reporting_period ADD period_start VARCHAR(10) NULL;
+```
+
+Then run `serving/export_to_azure_sql`. Its default selection is `dim_reporting_period,fact_financial_metric`, so unrelated serving tables remain untouched. The notebook validates both SQL table schemas before writing and uses the SQL Server connector's overwrite-with-truncate mode to preserve the existing table definitions and indexes. Refresh the Power BI model after export completes.
 
 ## Repository layout
 

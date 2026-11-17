@@ -19,11 +19,7 @@ REQUIRED_PATHS = (
     ("source", "sec", "retry", "max_attempts"),
     ("source", "sec", "retry", "initial_backoff_seconds"),
     ("source", "sec", "retry", "max_backoff_seconds"),
-    ("scope", "forms"),
-    ("storage", "bronze_schema"),
-    ("storage", "bronze_volume"),
     ("universe", "membership_file"),
-    ("universe", "history_start_date"),
 )
 
 
@@ -47,6 +43,3 @@ def load_pipeline_config(path: str | Path) -> dict[str, Any]:
             raise ConfigurationError(f"Configuration value cannot be empty: {dotted_path}")
 
     return config
-
-
-load_config = load_pipeline_config

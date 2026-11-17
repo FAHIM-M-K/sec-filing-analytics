@@ -2,7 +2,6 @@ import gzip
 import json
 
 FILING_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
-FP_MAP = {"FY": "FY", "Q1": "Q1", "Q2": "Q2", "Q3": "Q3", "Q4": "Q4"}
 
 
 def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) -> list[dict]:
@@ -36,7 +35,7 @@ def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) 
                 fy_val = int(date_ref[:4])
 
         # Robust fiscal period determination
-        fp_val = FP_MAP.get(fps[i], fps[i]) if i < len(fps) and fps[i] else ""
+        fp_val = fps[i] if i < len(fps) and fps[i] else ""
         if not fp_val:
             if form in ("10-K", "10-K/A"):
                 fp_val = "FY"

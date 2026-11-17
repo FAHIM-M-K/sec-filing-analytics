@@ -1,8 +1,3 @@
-import logging
-
-_log = logging.getLogger(__name__)
-
-
 def _hash_key(F, *col_exprs):
     from pyspark.sql.types import LongType
     return F.conv(

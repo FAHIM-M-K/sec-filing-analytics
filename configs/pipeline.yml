@@ -1,8 +1,3 @@
-# Shared project settings.
-project:
-  name: sec-filing-analytics
-  environment: development
-
 source:
   sec:
     base_url: https://data.sec.gov
@@ -15,26 +10,5 @@ source:
       initial_backoff_seconds: 1
       max_backoff_seconds: 30
 
-scope:
-  forms:
-    - 10-K
-    - 10-Q
-    - 10-K/A
-    - 10-Q/A
-  filing_lookback_days: 45
-  narrative_sections:
-    - Item 1A
-
-storage:
-  bronze_schema: sec_filing_analytics
-  bronze_volume: bronze
-  bronze_warning_utilization_percent: 70
-  bronze_hard_utilization_percent: 80
-
 universe:
   membership_file: configs/sp500.csv
-  history_start_date: "2010-01-01"
-
-warehouse:
-  sql_warning_size_gb: 28
-  sql_hard_operational_size_gb: 30

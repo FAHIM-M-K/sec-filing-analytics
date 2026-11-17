@@ -1,7 +1,4 @@
-import logging
 import re
-
-_log = logging.getLogger(__name__)
 
 
 def get_azure_sql_connection_properties(dbutils, scope: str = "azure_sql") -> dict:
@@ -29,7 +26,8 @@ def export_table_to_azure_sql(df, target_table: str, conn_props: dict, batch_siz
         .option("encrypt", conn_props["encrypt"])
         .option("trustServerCertificate", conn_props["trustServerCertificate"])
         .option("batchsize", str(batch_size))
-        .mode("append")
+        .option("truncate", "true")
+        .mode("overwrite")
         .save()
     )
 
@@ -47,58 +45,26 @@ def validate_export_columns(dataframe_columns: list[str], sql_columns: list[str]
         )
 
 
-def validate_export_types(
-    dataframe_types: list[tuple[str, str]],
-    sql_types: list[tuple[str, str]],
-    target_table: str,
-) -> None:
-    spark_to_sql = {
-        "string": {"varchar", "nvarchar", "char", "nchar", "text", "ntext"},
-        "bigint": {"bigint"},
-        "int": {"int", "integer"},
-        "timestamp": {"datetime2", "datetime", "smalldatetime"},
-        "boolean": {"bit"},
-        "double": {"float"},
-    }
-    sql_by_name = {name.casefold(): sql_type.casefold() for name, sql_type in sql_types}
-    mismatches = []
-    for name, spark_type in dataframe_types:
-        allowed_sql_types = spark_to_sql.get(spark_type.casefold())
-        actual_sql_type = sql_by_name.get(name.casefold())
-        if allowed_sql_types is None or actual_sql_type not in allowed_sql_types:
-            mismatches.append(f"{name}: Gold={spark_type}, SQL={actual_sql_type}")
-    if mismatches:
-        raise ValueError(f"Type mismatch for {target_table}: {', '.join(mismatches)}")
-
-
-def truncate_sql_table_after_schema_check(spark, df, target_table: str, conn_props: dict) -> list[str]:
+def validate_sql_table_schema(spark, df, target_table: str, conn_props: dict) -> list[str]:
     if not re.fullmatch(r"dbo\.[A-Za-z_][A-Za-z0-9_]*", target_table):
         raise ValueError(f"Unsupported Azure SQL table name: {target_table}")
-
-    jvm = spark._sc._gateway.jvm
-    url = f"jdbc:sqlserver://{conn_props['host']}:{conn_props['port']};databaseName={conn_props['database']};encrypt={conn_props['encrypt']};trustServerCertificate={conn_props['trustServerCertificate']}"
-    conn = jvm.java.sql.DriverManager.getConnection(url, conn_props["user"], conn_props["password"])
-    try:
-        stmt = conn.createStatement()
-        rs = stmt.executeQuery(f"SELECT TOP (0) * FROM {target_table}")
-        metadata = rs.getMetaData()
-        sql_columns = [metadata.getColumnName(i) for i in range(1, metadata.getColumnCount() + 1)]
-        sql_types = [
-            (metadata.getColumnName(i), metadata.getColumnTypeName(i))
-            for i in range(1, metadata.getColumnCount() + 1)
-        ]
-        validate_export_columns(df.columns, sql_columns, target_table)
-        validate_export_types(
-            [(field.name, field.dataType.simpleString()) for field in df.schema.fields],
-            sql_types,
-            target_table,
-        )
-        rs.close()
-        stmt.execute(f"TRUNCATE TABLE {target_table}")
-        stmt.close()
-        return sql_columns
-    finally:
-        conn.close()
+    target_schema = (
+        spark.read.format("sqlserver")
+        .options(**{
+            "host": conn_props["host"],
+            "port": conn_props["port"],
+            "database": conn_props["database"],
+            "user": conn_props["user"],
+            "password": conn_props["password"],
+            "encrypt": conn_props["encrypt"],
+            "trustServerCertificate": conn_props["trustServerCertificate"],
+            "query": f"SELECT TOP (0) * FROM {target_table}",
+        })
+        .load()
+    )
+    sql_columns = target_schema.columns
+    validate_export_columns(df.columns, sql_columns, target_table)
+    return sql_columns
 
 
 def select_tables_to_export(tables: list[tuple[str, str, str]], table_names: list[str] | None):
@@ -114,21 +80,6 @@ def select_tables_to_export(tables: list[tuple[str, str, str]], table_names: lis
     return [entry for entry in tables if entry[0] in requested]
 
 
-def execute_azure_sql_ddl(spark, conn_props: dict, ddl_statements: list[str]):
-    jvm = spark._sc._gateway.jvm
-    url = f"jdbc:sqlserver://{conn_props['host']}:{conn_props['port']};databaseName={conn_props['database']};encrypt={conn_props['encrypt']};trustServerCertificate={conn_props['trustServerCertificate']}"
-    conn = jvm.java.sql.DriverManager.getConnection(url, conn_props["user"], conn_props["password"])
-    try:
-        stmt = conn.createStatement()
-        for ddl in ddl_statements:
-            clean_ddl = ddl.strip()
-            if clean_ddl:
-                stmt.execute(clean_ddl)
-        stmt.close()
-    finally:
-        conn.close()
-
-
 def export_gold_to_azure_sql(
     spark,
     dbutils,
@@ -136,11 +87,6 @@ def export_gold_to_azure_sql(
     scope: str = "azure_sql",
     table_names: list[str] | None = None,
 ) -> dict:
-    from sec_filing_analytics.serving.schema import (
-        get_serving_ddls_for_tables,
-        get_serving_migrations_for_tables,
-    )
-
     tables_to_export = [
         ("dim_company",           f"{catalog}.gold.dim_company",           "dbo.dim_company"),
         ("dim_filing",            f"{catalog}.gold.dim_filing",            "dbo.dim_filing"),
@@ -151,31 +97,22 @@ def export_gold_to_azure_sql(
         ("fact_corporate_event",  f"{catalog}.gold.fact_corporate_event",  "dbo.fact_corporate_event"),
     ]
     tables_to_export = select_tables_to_export(tables_to_export, table_names)
-    selected_names = [name for name, _, _ in tables_to_export]
 
     conn_props = get_azure_sql_connection_properties(dbutils, scope)
 
-    if hasattr(spark, "_sc") and spark._sc is not None:
-        try:
-            ddl_statements = get_serving_ddls_for_tables(selected_names)
-            ddl_statements += get_serving_migrations_for_tables(selected_names)
-            execute_azure_sql_ddl(spark, conn_props, ddl_statements)
-        except Exception as exc:
-            _log.exception("Azure SQL schema setup failed")
-            raise RuntimeError("Azure SQL schema setup failed; export was not started") from exc
-    else:
-        raise RuntimeError("Azure SQL schema setup requires an active Spark JVM gateway")
-
+    # Validate every destination before the overwrite writer truncates any table.
+    prepared = []
     results = {}
     for name, src, dest in tables_to_export:
         df = spark.table(src)
         cnt = df.count()
         if name in {"dim_reporting_period", "fact_financial_metric"} and cnt == 0:
             raise RuntimeError(f"Gold source {src} is empty; refusing to truncate {dest}.")
-        sql_columns = truncate_sql_table_after_schema_check(spark, df, dest, conn_props)
-        # Azure SQL ALTER TABLE appends migrated columns to the physical schema;
-        # align write order with SQL metadata before connector append mode.
-        export_table_to_azure_sql(df.select(*sql_columns), dest, conn_props)
+        sql_columns = validate_sql_table_schema(spark, df, dest, conn_props)
+        prepared.append((name, df.select(*sql_columns), dest, cnt))
+
+    for name, df, dest, cnt in prepared:
+        export_table_to_azure_sql(df, dest, conn_props)
         results[name] = cnt
 
     return results

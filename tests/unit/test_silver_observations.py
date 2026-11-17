@@ -103,7 +103,7 @@ def test_spark_dedup_keeps_quarter_and_ytd_and_selects_latest_restatement():
 
     rows = [
         ("0000000001", "a1", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 30.0, "2024-08-01", "h1"),
-        ("0000000001", "a2", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 35.0, "2024-09-01", "h2"),
+        ("0000000001", "a2", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q/A", "USD", 35.0, "2024-09-01", "h2"),
         ("0000000001", "a1", "Revenues", "Revenue", "duration", "2024-01-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 60.0, "2024-08-01", "h1"),
     ]
     try:

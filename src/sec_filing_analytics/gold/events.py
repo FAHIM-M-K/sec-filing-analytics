@@ -1,9 +1,6 @@
 from __future__ import annotations
 
-import logging
 from typing import Any
-
-_log = logging.getLogger(__name__)
 
 
 def _hash_key(F: Any, *col_exprs: Any) -> Any:

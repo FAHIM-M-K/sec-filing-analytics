@@ -1,8 +1,5 @@
 import gzip
 import json
-import logging
-
-_log = logging.getLogger(__name__)
 
 CANONICAL_TAGS: dict[str, list[str]] = {
     "Revenue": [
@@ -66,6 +63,18 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
     with gzip.open(path, "rt", encoding="utf-8") as f:
         data = json.load(f)
 
+    return _parse_facts_data(data, source_hash)
+
+
+def _parse_facts_bytes(content: bytes, source_hash: str, path: str) -> list[dict]:
+    try:
+        data = json.loads(gzip.decompress(content))
+        return _parse_facts_data(data, source_hash)
+    except Exception as exc:
+        raise RuntimeError(f"Failed to parse company-facts payload {path}: {exc}") from exc
+
+
+def _parse_facts_data(data: dict, source_hash: str) -> list[dict]:
     cik     = str(data.get("cik", "")).zfill(10)
     us_gaap = data.get("facts", {}).get("us-gaap", {})
 
@@ -136,22 +145,25 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
 
 
 def build_silver_observations(spark, manifest_df):
+    from pyspark.sql import functions as F
+    from pyspark.sql.types import ArrayType
     from sec_filing_analytics.silver.manifests import latest_payload_paths
-
-    paths = latest_payload_paths(manifest_df)
-
     from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
 
-    def parse_payload(path_hash):
-        path, source_hash = path_hash
-        try:
-            return parse_facts_payload(path, source_hash)
-        except Exception as exc:
-            raise RuntimeError(f"Failed to parse company-facts payload {path}: {exc}") from exc
-
-    partitions = min(len(paths), max(1, spark.sparkContext.defaultParallelism))
-    rows = spark.sparkContext.parallelize(paths, partitions).flatMap(parse_payload)
-    df = spark.createDataFrame(rows, schema=SILVER_OBSERVATION_SCHEMA)
+    paths = latest_payload_paths(manifest_df)
+    manifest = spark.createDataFrame(paths, ["payload_path", "source_hash"])
+    payload_files = (
+        spark.read.format("binaryFile")
+        .load([path for path, _ in paths])
+        .select(F.col("path").alias("payload_path"), "content")
+    )
+    payloads = manifest.join(payload_files, on="payload_path", how="left")
+    parse_payload = F.udf(_parse_facts_bytes, ArrayType(SILVER_OBSERVATION_SCHEMA))
+    df = (
+        payloads
+        .select(F.explode(parse_payload("content", "source_hash", "payload_path")).alias("observation"))
+        .select("observation.*")
+    )
     df = _deduplicate_restatements(df)
     return df
 
@@ -173,7 +185,7 @@ def _deduplicate_restatements(df):
     )
 
     w1 = Window.partitionBy(
-        "cik", "tag", "period_start", "period_end", "fiscal_period", "form_type"
+        "cik", "tag", "period_start", "period_end", "fiscal_period"
     ).orderBy(
         F.col("filed_date").desc_nulls_last(),
         F.col("accession_number").desc_nulls_last(),
@@ -189,7 +201,7 @@ def _deduplicate_restatements(df):
     df = df.withColumn("_tag_pri", priority_expr[F.col("tag")])
 
     w2 = Window.partitionBy(
-        "cik", "metric", "period_start", "period_end", "fiscal_period", "form_type"
+        "cik", "metric", "period_start", "period_end", "fiscal_period"
     ).orderBy(F.col("_tag_pri").asc())
 
     return (

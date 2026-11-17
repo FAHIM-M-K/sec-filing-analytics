@@ -1,8 +1,3 @@
-import logging
-
-_log = logging.getLogger(__name__)
-
-
 def _hash_key(F, *col_exprs):
     from pyspark.sql.types import LongType
     return F.conv(
@@ -52,27 +47,3 @@ def build_fact_financial_metric(spark, catalog: str):
         .select([fld.name for fld in GOLD_FACT_SCHEMA])
     )
     return df
-
-
-def upsert_fact_financial_metric(spark, df, catalog: str) -> dict:
-    from delta.tables import DeltaTable
-
-    tbl = f"{catalog}.gold.fact_financial_metric"
-    merge_condition = (
-        "t.cik = s.cik AND "
-        "t.accession_number = s.accession_number AND "
-        "t.metric_name = s.metric_name AND "
-        "t.period_key = s.period_key"
-    )
-    (
-        DeltaTable.forName(spark, tbl).alias("t")
-        .merge(df.alias("s"), merge_condition)
-        .whenMatchedUpdate(set={
-            "value":       "s.value",
-            "source_hash": "s.source_hash",
-            "fact_key":    "s.fact_key",
-        })
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
-    return {"total_rows": spark.table(tbl).count()}

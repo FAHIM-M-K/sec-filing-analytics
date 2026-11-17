@@ -101,7 +101,7 @@ def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
                 "item_name":        item_name,
                 "text_content":     content,
                 "char_count":       len(content),
-                "source_hash":      hashlib.md5(content.encode()).hexdigest(),
+                "source_hash":      hashlib.sha256(content.encode("utf-8")).hexdigest(),
             })
 
     return rows

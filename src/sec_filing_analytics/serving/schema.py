@@ -45,6 +45,7 @@ IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'dim_reporting_period' AND 
 BEGIN
     CREATE TABLE dbo.dim_reporting_period (
         period_key       BIGINT NOT NULL PRIMARY KEY,
+        period_start     VARCHAR(10) NULL,
         period_end       VARCHAR(10) NOT NULL,
         fiscal_year      INT NULL,
         fiscal_period    VARCHAR(10) NULL,
@@ -69,6 +70,13 @@ BEGIN
     );
     CREATE NONCLUSTERED INDEX ix_metric_name ON dbo.dim_metric (metric_name);
 END;
+"""
+
+
+def azure_sql_dim_period_migration_ddl() -> str:
+    return """
+IF COL_LENGTH('dbo.dim_reporting_period', 'period_start') IS NULL
+    ALTER TABLE dbo.dim_reporting_period ADD period_start VARCHAR(10) NULL;
 """
 
 
@@ -154,3 +162,7 @@ def get_all_serving_ddls() -> list[str]:
         azure_sql_fact_narrative_ddl(),
         azure_sql_fact_corporate_event_ddl(),
     ]
+
+
+def get_serving_migration_ddls() -> list[str]:
+    return [azure_sql_dim_period_migration_ddl()]

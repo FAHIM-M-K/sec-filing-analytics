@@ -55,6 +55,44 @@ def land_submission_payload(result: SubmissionFetchResult, volume_root: str | Pa
     return path
 
 
+def land_submission_history_files(
+    result: SubmissionFetchResult,
+    client: SecApiClient,
+    volume_root: str | Path,
+    *,
+    refresh: bool = False,
+) -> list[Path]:
+    """Download SEC-referenced older submission chunks beside their parent payload."""
+    payload = json.loads(result.content)
+    history_refs = payload.get("filings", {}).get("files", [])
+    chunk_dir = submission_volume_path(volume_root, result.cik, result.content_hash).parent
+    chunk_dir.mkdir(parents=True, exist_ok=True)
+    written: list[Path] = []
+
+    for reference in history_refs:
+        name = reference.get("name", "")
+        if not isinstance(name, str) or Path(name).name != name or not name.endswith(".json"):
+            raise ValueError(f"Invalid SEC submissions history filename: {name!r}")
+        chunk_path = chunk_dir / f"{name}.gz"
+        if chunk_path.exists() and not refresh:
+            try:
+                with gzip.open(chunk_path, "rt", encoding="utf-8") as chunk_file:
+                    cached_payload = json.load(chunk_file)
+                if isinstance(cached_payload, dict):
+                    continue
+            except (OSError, EOFError, json.JSONDecodeError):
+                pass
+
+        chunk_payload = client.get_submission_history_file(name)
+        temporary_path = chunk_path.with_name(f"{chunk_path.name}.tmp")
+        with gzip.open(temporary_path, "wt", encoding="utf-8") as chunk_file:
+            json.dump(chunk_payload, chunk_file, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+        temporary_path.replace(chunk_path)
+        written.append(chunk_path)
+
+    return written
+
+
 def build_manifest_row(
     result: SubmissionFetchResult,
     run_id: str,
@@ -77,21 +115,18 @@ def build_manifest_row(
 
 
 def latest_submission_hashes(spark: Any, table_name: str) -> dict[str, str]:
-    try:
-        rows = spark.sql(
-            f"""
-            SELECT cik, content_hash
-            FROM (
-                SELECT cik, content_hash,
-                       ROW_NUMBER() OVER (PARTITION BY cik ORDER BY fetched_at DESC) AS rn
-                FROM {table_name}
-            ) ranked
-            WHERE rn = 1
-            """
-        ).collect()
-        return {row["cik"]: row["content_hash"] for row in rows}
-    except Exception:
-        return {}
+    rows = spark.sql(
+        f"""
+        SELECT cik, content_hash
+        FROM (
+            SELECT cik, content_hash,
+                   ROW_NUMBER() OVER (PARTITION BY cik ORDER BY fetched_at DESC, run_id DESC) AS rn
+            FROM {table_name}
+        ) ranked
+        WHERE rn = 1
+        """
+    ).collect()
+    return {row["cik"]: row["content_hash"] for row in rows}
 
 
 def upsert_submission_manifest(

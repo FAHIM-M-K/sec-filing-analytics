@@ -78,21 +78,18 @@ def build_manifest_row(
 
 
 def latest_company_facts_hashes(spark: Any, table_name: str) -> dict[str, str]:
-    try:
-        rows = spark.sql(
-            f"""
-            SELECT cik, content_hash
-            FROM (
-                SELECT cik, content_hash,
-                       ROW_NUMBER() OVER (PARTITION BY cik ORDER BY fetched_at DESC) AS rn
-                FROM {table_name}
-            ) ranked
-            WHERE rn = 1
-            """
-        ).collect()
-        return {row["cik"]: row["content_hash"] for row in rows}
-    except Exception:
-        return {}
+    rows = spark.sql(
+        f"""
+        SELECT cik, content_hash
+        FROM (
+            SELECT cik, content_hash,
+                   ROW_NUMBER() OVER (PARTITION BY cik ORDER BY fetched_at DESC, run_id DESC) AS rn
+            FROM {table_name}
+        ) ranked
+        WHERE rn = 1
+        """
+    ).collect()
+    return {row["cik"]: row["content_hash"] for row in rows}
 
 
 def upsert_company_facts_manifest(

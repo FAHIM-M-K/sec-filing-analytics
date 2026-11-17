@@ -2,6 +2,8 @@ import gzip
 import json
 from datetime import datetime, timezone
 
+import pytest
+
 from sec_filing_analytics.bronze.company_facts import (
     CompanyFactsFetchResult,
     build_manifest_row,
@@ -85,4 +87,14 @@ def test_build_manifest_row_unchanged():
     row = build_manifest_row(_result(), "run-002", None, False)
     assert row["is_new_version"] is False
     assert row["payload_path"] is None
+
+
+def test_latest_hash_lookup_surfaces_manifest_query_failure():
+    class BrokenSpark:
+        def sql(self, _query):
+            raise RuntimeError("manifest unavailable")
+
+    from sec_filing_analytics.bronze.company_facts import latest_company_facts_hashes
+    with pytest.raises(RuntimeError, match="manifest unavailable"):
+        latest_company_facts_hashes(BrokenSpark(), "bronze.company_facts_manifest")
 

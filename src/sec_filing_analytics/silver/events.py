@@ -3,12 +3,8 @@ from __future__ import annotations
 import gzip
 import html
 import json
-import logging
-import os
 import re
 from typing import Any
-
-_log = logging.getLogger(__name__)
 
 EVENT_FORMS = {"8-K", "8-K/A"}
 
@@ -125,49 +121,37 @@ def parse_submission_events(path: str, source_hash: str) -> list[dict[str, Any]]
 
     rows = _parse_recent_events_block(cik, company, data.get("filings", {}).get("recent", {}), source_hash)
 
-    base_dir = os.path.dirname(path)
-    for chunk_ref in data.get("filings", {}).get("files", []):
-        chunk_name = chunk_ref.get("name", "")
-        if not chunk_name:
-            continue
-        chunk_path = os.path.join(base_dir, chunk_name)
-        if not os.path.exists(chunk_path):
-            if os.path.exists(chunk_path + ".gz"):
-                chunk_path = chunk_path + ".gz"
-            else:
-                continue
-        try:
-            if chunk_path.endswith(".gz"):
-                with gzip.open(chunk_path, "rt", encoding="utf-8") as f:
-                    chunk = json.load(f)
-            else:
-                with open(chunk_path, "rt", encoding="utf-8") as f:
-                    chunk = json.load(f)
-            rows.extend(_parse_recent_events_block(cik, company, chunk, source_hash))
-        except Exception as exc:
-            _log.warning("Skipping chunk %s: %s", chunk_path, exc)
+    from sec_filing_analytics.silver.submission_chunks import iter_submission_history_chunks
+    for _, chunk in iter_submission_history_chunks(path, data):
+        rows.extend(_parse_recent_events_block(cik, company, chunk, source_hash))
 
     return rows
 
 
 def build_silver_corporate_events(spark: Any, manifest_df: Any) -> Any:
     """Read all Bronze submission payloads from manifest and parse high-impact 8-K events."""
-    from pyspark.sql import functions as F
+    from sec_filing_analytics.silver.manifests import latest_payload_manifest
     from sec_filing_analytics.silver.schema import SILVER_CORPORATE_EVENT_SCHEMA
 
+    current_manifest = latest_payload_manifest(manifest_df)
     paths = [
         (r["payload_path"], r["content_hash"])
-        for r in manifest_df.filter(F.col("payload_path").isNotNull())
+        for r in current_manifest
         .select("payload_path", "content_hash")
         .collect()
     ]
 
     all_rows: list[dict[str, Any]] = []
+    payload_errors = []
     for path, hash_ in paths:
         try:
             all_rows.extend(parse_submission_events(path, hash_))
         except Exception as exc:
-            _log.warning("Skipping payload %s: %s", path, exc)
+            payload_errors.append((path, exc))
+
+    if payload_errors:
+        sample = "; ".join(f"{path}: {error}" for path, error in payload_errors[:5])
+        raise RuntimeError(f"Failed to parse {len(payload_errors)} submissions payload(s) for events: {sample}")
 
     if not all_rows:
         return spark.createDataFrame([], schema=SILVER_CORPORATE_EVENT_SCHEMA)

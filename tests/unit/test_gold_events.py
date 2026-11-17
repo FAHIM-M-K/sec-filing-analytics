@@ -3,6 +3,7 @@ from sec_filing_analytics.gold.schema import (
     fact_corporate_event_ddl,
 )
 from sec_filing_analytics.silver.events import TARGET_8K_ITEMS
+from sec_filing_analytics.gold.schema import GOLD_DIM_PERIOD_SCHEMA
 
 
 def test_gold_fact_corporate_event_schema_fields():
@@ -33,3 +34,7 @@ def test_target_8k_items_taxonomy():
     assert "2.05" in TARGET_8K_ITEMS
     assert "5.07" not in TARGET_8K_ITEMS  # Routine shareholder vote excluded
     assert "7.01" not in TARGET_8K_ITEMS  # Routine slide deck excluded
+
+
+def test_gold_reporting_period_keeps_period_start():
+    assert "period_start" in [field.name for field in GOLD_DIM_PERIOD_SCHEMA]

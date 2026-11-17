@@ -17,6 +17,8 @@ REQUIRED_PATHS = (
     ("source", "sec", "connect_timeout_seconds"),
     ("source", "sec", "read_timeout_seconds"),
     ("source", "sec", "retry", "max_attempts"),
+    ("source", "sec", "retry", "initial_backoff_seconds"),
+    ("source", "sec", "retry", "max_backoff_seconds"),
     ("scope", "forms"),
     ("storage", "bronze_schema"),
     ("storage", "bronze_volume"),

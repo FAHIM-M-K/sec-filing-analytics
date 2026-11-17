@@ -15,12 +15,18 @@ For the business purpose, architecture, data model, and interview talking points
 ## What the pipeline does
 
 - Retrieves SEC Company Submissions and Company Facts data for the companies listed in [`configs/sp500.csv`](configs/sp500.csv).
+- Downloads older SEC submission-history chunks referenced by the current submissions index; filing/event parsers now fail clearly if a referenced chunk is absent or corrupt.
 - Uses a declared SEC User-Agent, request throttling, retries, and exponential backoff.
 - Records SHA-256 content hashes and ingestion metadata so unchanged source payloads can be skipped.
 - Keeps 10-K, 10-Q, and amendment observations from 2010 onward.
-- Maps selected standard US-GAAP tags to ten business metrics, retaining source tag, accession number, form, period, and source hash.
+- Maps selected standard US-GAAP tags to ten business metrics. Silver retains the source tag, accession, form, period start/end, and source hash for traceability.
 - Extracts selected 10-K narrative sections, including Item 1A risk factors.
+- Extracts high-impact Form 8-K catalyst item metadata into Silver and Gold corporate-event tables. The current extractor does not fetch filing HTML, so event headline and body fields are not populated yet.
+- Preserves XBRL period start and end dates so standalone-quarter observations can be separated from cumulative year-to-date facts.
+- Uses four latest discrete quarter-length revenue observations for LTM when they form a complete one-year window; if not, Power BI falls back to the latest annual revenue period. Both paths exclude periods before 2010.
 - Builds Delta Lake Silver and Gold tables, then exports the Gold model to Azure SQL for Power BI.
+
+After deploying a version that changes the reporting-period grain, run `silver/transform_observations` to rebuild the period-preserving Silver snapshot, then `gold/build_dimensions`, `gold/build_facts`, and `serving/export_to_azure_sql` in that order. For this migration, set the export notebook's `tables_to_export` widget to `dim_reporting_period,fact_financial_metric`; this preserves unrelated Azure SQL tables. The export applies an additive migration for `dim_reporting_period.period_start`, validates Gold/SQL columns, and appends in the SQL table's physical column order. Refresh the Power BI model after the export completes.
 
 ## Repository layout
 

@@ -20,7 +20,7 @@ def build_fact_financial_metric(spark, catalog: str):
     company = spark.table(f"{catalog}.gold.dim_company").select("cik", "company_key")
     filing  = spark.table(f"{catalog}.gold.dim_filing").select("accession_number", "filing_key")
     period  = spark.table(f"{catalog}.gold.dim_reporting_period").select(
-        "period_end", "fiscal_period", "period_type", "period_key"
+        "period_start", "period_end", "fiscal_period", "period_type", "period_key"
     )
     metric  = spark.table(f"{catalog}.gold.dim_metric").select("metric_name", "metric_key")
 
@@ -29,12 +29,12 @@ def build_fact_financial_metric(spark, catalog: str):
         .withColumnRenamed("metric", "metric_name")
         .join(company, on="cik",              how="left")
         .join(filing,  on="accession_number", how="left")
-        .join(period,  on=["period_end", "fiscal_period", "period_type"], how="left")
+        .join(period,  on=["period_start", "period_end", "fiscal_period", "period_type"], how="left")
         .join(metric,  on="metric_name",      how="left")
         .withColumn(
             "fact_key",
             _hash_key(F, F.col("cik"), F.col("accession_number"), F.col("tag"),
-                      F.col("period_end"), F.col("fiscal_period"), F.col("form_type")),
+                      F.col("period_start"), F.col("period_end"), F.col("fiscal_period"), F.col("form_type")),
         )
         .withColumn("company_key", F.coalesce(F.col("company_key"), F.lit(0).cast("long")))
         .withColumn("filing_key",  F.coalesce(F.col("filing_key"),  F.lit(0).cast("long")))

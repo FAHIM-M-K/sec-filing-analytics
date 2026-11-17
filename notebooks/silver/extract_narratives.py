@@ -27,18 +27,16 @@ filings_df = (
     .select("cik", "accession_number", "form_type", "filing_date", "primary_document")
 )
 
-try:
-    # A filing is only completely done if both key narrative items were extracted
-    done = (
-        spark.table(f"{catalog}.silver.filing_narrative")
-        .groupBy("cik", "accession_number")
-        .agg(F.countDistinct("item_name").alias("item_cnt"))
-        .filter(F.col("item_cnt") >= 2)
-        .select("cik", "accession_number")
-    )
-    filings_df = filings_df.join(done, on=["cik", "accession_number"], how="left_anti")
-except Exception:
-    pass
+# A filing is only completely done if both key narrative items were extracted.
+# The table is created above; query failures should stop the task, not reprocess silently.
+done = (
+    spark.table(f"{catalog}.silver.filing_narrative")
+    .groupBy("cik", "accession_number")
+    .agg(F.countDistinct("item_name").alias("item_cnt"))
+    .filter(F.col("item_cnt") >= 2)
+    .select("cik", "accession_number")
+)
+filings_df = filings_df.join(done, on=["cik", "accession_number"], how="left_anti")
 
 from pyspark.sql.window import Window
 

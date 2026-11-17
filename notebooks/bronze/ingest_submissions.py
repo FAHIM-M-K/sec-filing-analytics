@@ -19,12 +19,13 @@ import uuid
 
 from sec_filing_analytics.config.loader import load_pipeline_config
 from sec_filing_analytics.sec_client.client import SecApiClient, SecClientSettings
-from sec_filing_analytics.universe.membership import load_membership_csv
+from sec_filing_analytics.universe.membership import load_membership_csv, active_membership_ciks
 from sec_filing_analytics.bronze.schema import create_submission_manifest_table
 from sec_filing_analytics.bronze.submissions import (
     build_manifest_row,
     fetch_submission,
     land_submission_payload,
+    land_submission_history_files,
     latest_submission_hashes,
     upsert_submission_manifest,
 )
@@ -47,7 +48,7 @@ print(f"Run ID: {run_id}")
 
 # COMMAND ----------
 all_records = load_membership_csv(config["universe"]["membership_file"])
-active_ciks = [r["cik"] for r in all_records if r["membership_end_date"] is None]
+active_ciks = active_membership_ciks(all_records)
 known_hashes = latest_submission_hashes(spark, SUBMISSION_TABLE)
 
 print(f"Active CIKs : {len(active_ciks)}")
@@ -65,6 +66,10 @@ for cik in active_ciks:
         payload_path = None
         if is_new_version:
             payload_path = str(land_submission_payload(result, VOLUME_ROOT))
+
+        land_submission_history_files(
+            result, client, VOLUME_ROOT, refresh=is_new_version
+        )
 
         manifest_rows.append(build_manifest_row(result, run_id, payload_path, is_new_version))
 

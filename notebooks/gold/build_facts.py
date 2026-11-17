@@ -14,8 +14,12 @@ from sec_filing_analytics.gold.schema import fact_ddl
 spark.sql(fact_ddl(CATALOG))
 
 # COMMAND ----------
-from sec_filing_analytics.gold.facts import build_fact_financial_metric, upsert_fact_financial_metric
+from sec_filing_analytics.gold.facts import build_fact_financial_metric
 
 df = build_fact_financial_metric(spark, CATALOG)
-result = upsert_fact_financial_metric(spark, df, CATALOG)
+# Full replacement is required after changing period grain: old fact keys must
+# not coexist with the rebuilt period dimension.
+(df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+ .partitionBy("metric_name").saveAsTable(f"{CATALOG}.gold.fact_financial_metric"))
+result = {"total_rows": spark.table(f"{CATALOG}.gold.fact_financial_metric").count()}
 print("fact_financial_metric:", result)

@@ -27,7 +27,7 @@ spark.sql(dim_metric_ddl(CATALOG))
 from sec_filing_analytics.gold.dimensions import (
     build_dim_company,  upsert_dim_company,
     build_dim_filing,   upsert_dim_filing,
-    build_dim_period,   upsert_dim_period,
+    build_dim_period,
     build_dim_metric,   upsert_dim_metric,
 )
 
@@ -40,5 +40,10 @@ print("dim_company:", result)
 result = upsert_dim_filing(spark, build_dim_filing(spark, CATALOG), CATALOG)
 print("dim_filing:", result)
 
-result = upsert_dim_period(spark, build_dim_period(spark, CATALOG), CATALOG)
+# Period grain now includes period_start. Replace this dimension so obsolete
+# pre-period_start keys cannot remain alongside the rebuilt grain.
+period_df = build_dim_period(spark, CATALOG)
+(period_df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+ .saveAsTable(f"{CATALOG}.gold.dim_reporting_period"))
+result = {"total_rows": spark.table(f"{CATALOG}.gold.dim_reporting_period").count()}
 print("dim_reporting_period:", result)

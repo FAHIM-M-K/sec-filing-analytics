@@ -105,37 +105,34 @@ def build_dim_filing(spark, catalog: str):
         .select([fld.name for fld in GOLD_DIM_FILING_SCHEMA])
     )
 
-    # Ingest historical filings referenced in observation data but absent from filings
-    try:
-        obs = spark.table(f"{catalog}.silver.observation")
-        existing_accns = filing.select("accession_number").distinct()
-        missing_filings = (
-            obs
-            .filter(F.col("accession_number").isNotNull() & (F.col("accession_number") != ""))
-            .join(existing_accns, on="accession_number", how="left_anti")
-            .groupBy("accession_number", "cik")
-            .agg(
-                F.first("form_type").alias("form_type"),
-                F.first("filed_date").alias("filing_date"),
-                F.first("fiscal_year").alias("fiscal_year"),
-                F.first("fiscal_period").alias("fiscal_period"),
-                F.first("period_end").alias("report_date"),
-            )
-            .withColumn("is_amendment", F.col("form_type").rlike(r"/A$"))
-            .withColumn("primary_document", F.lit(None).cast("string"))
-            .withColumn("filing_key", _hash_key(F, F.col("accession_number")))
-            .withColumn(
-                "sec_url",
-                F.concat(
-                    F.lit("https://www.sec.gov/edgar/browse/?CIK="),
-                    F.regexp_replace(F.col("cik"), r"^0+", ""),
-                )
-            )
-            .select([fld.name for fld in GOLD_DIM_FILING_SCHEMA])
+    # Ingest historical filings referenced in observations but absent from submissions.
+    obs = spark.table(f"{catalog}.silver.observation")
+    existing_accns = filing.select("accession_number").distinct()
+    missing_filings = (
+        obs
+        .filter(F.col("accession_number").isNotNull() & (F.col("accession_number") != ""))
+        .join(existing_accns, on="accession_number", how="left_anti")
+        .groupBy("accession_number", "cik")
+        .agg(
+            F.first("form_type").alias("form_type"),
+            F.first("filed_date").alias("filing_date"),
+            F.max_by("fiscal_year", "period_end").alias("fiscal_year"),
+            F.max_by("fiscal_period", "period_end").alias("fiscal_period"),
+            F.max("period_end").alias("report_date"),
         )
-        df = df.unionByName(missing_filings)
-    except Exception as exc:
-        _log.warning("Could not backfill filings from observations: %s", exc)
+        .withColumn("is_amendment", F.col("form_type").rlike(r"/A$"))
+        .withColumn("primary_document", F.lit(None).cast("string"))
+        .withColumn("filing_key", _hash_key(F, F.col("accession_number")))
+        .withColumn(
+            "sec_url",
+            F.concat(
+                F.lit("https://www.sec.gov/edgar/browse/?CIK="),
+                F.regexp_replace(F.col("cik"), r"^0+", ""),
+            )
+        )
+        .select([fld.name for fld in GOLD_DIM_FILING_SCHEMA])
+    )
+    df = df.unionByName(missing_filings)
 
     sentinel = spark.createDataFrame(
         [{"filing_key": 0, "accession_number": "UNKNOWN", "cik": "UNKNOWN",
@@ -153,17 +150,17 @@ def build_dim_period(spark, catalog: str):
     from sec_filing_analytics.gold.schema import GOLD_DIM_PERIOD_SCHEMA
 
     obs = spark.table(f"{catalog}.silver.observation")
-    w = Window.partitionBy("period_end", "fiscal_period", "period_type").orderBy(F.col("fiscal_year").desc_nulls_last())
+    w = Window.partitionBy("period_start", "period_end", "fiscal_period", "period_type").orderBy(F.col("fiscal_year").desc_nulls_last())
     df = (
         obs
-        .select("period_end", "fiscal_year", "fiscal_period", "period_type")
+        .select("period_start", "period_end", "fiscal_year", "fiscal_period", "period_type")
         .distinct()
         .withColumn("_rn", F.row_number().over(w))
         .filter(F.col("_rn") == 1)
         .drop("_rn")
         .withColumn("calendar_year",    F.year(F.to_date(F.col("period_end"))))
         .withColumn("calendar_quarter", F.quarter(F.to_date(F.col("period_end"))))
-        .withColumn("period_key", _hash_key(F, F.col("period_end"), F.col("fiscal_period"), F.col("period_type")))
+        .withColumn("period_key", _hash_key(F, F.col("period_start"), F.col("period_end"), F.col("fiscal_period"), F.col("period_type")))
         .select([fld.name for fld in GOLD_DIM_PERIOD_SCHEMA])
     )
     return df
@@ -225,7 +222,7 @@ def upsert_dim_period(spark, df, catalog: str) -> dict:
         DeltaTable.forName(spark, tbl).alias("t")
         .merge(
             df.alias("s"),
-            "t.period_end = s.period_end AND t.fiscal_period = s.fiscal_period AND t.period_type = s.period_type",
+            "t.period_start <=> s.period_start AND t.period_end = s.period_end AND t.fiscal_period = s.fiscal_period AND t.period_type = s.period_type",
         )
         .whenMatchedUpdateAll()
         .whenNotMatchedInsertAll()

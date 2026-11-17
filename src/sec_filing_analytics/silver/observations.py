@@ -137,27 +137,31 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
 
 def build_silver_observations(spark, manifest_df):
     from pyspark.sql import functions as F
+    from sec_filing_analytics.silver.manifests import latest_payload_manifest
 
+    latest_manifest = latest_payload_manifest(manifest_df)
     paths = [
         (r["payload_path"], r["content_hash"])
-        for r in manifest_df.filter(F.col("payload_path").isNotNull())
+        for r in latest_manifest
         .select("payload_path", "content_hash")
         .collect()
     ]
 
-    all_rows = []
-    for path, hash_ in paths:
-        try:
-            all_rows.extend(parse_facts_payload(path, hash_))
-        except Exception as exc:
-            _log.warning("Skipping payload %s: %s", path, exc)
-
     from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
 
-    if not all_rows:
+    if not paths:
         return spark.createDataFrame([], schema=SILVER_OBSERVATION_SCHEMA)
 
-    df = spark.createDataFrame(all_rows, schema=SILVER_OBSERVATION_SCHEMA)
+    def parse_payload(path_hash):
+        path, source_hash = path_hash
+        try:
+            return parse_facts_payload(path, source_hash)
+        except Exception as exc:
+            raise RuntimeError(f"Failed to parse company-facts payload {path}: {exc}") from exc
+
+    partitions = min(len(paths), max(1, spark.sparkContext.defaultParallelism))
+    rows = spark.sparkContext.parallelize(paths, partitions).flatMap(parse_payload)
+    df = spark.createDataFrame(rows, schema=SILVER_OBSERVATION_SCHEMA)
     df = _deduplicate_restatements(df)
     return df
 
@@ -179,8 +183,12 @@ def _deduplicate_restatements(df):
     )
 
     w1 = Window.partitionBy(
-        "cik", "tag", "period_end", "fiscal_period", "form_type"
-    ).orderBy(F.col("filed_date").desc())
+        "cik", "tag", "period_start", "period_end", "fiscal_period", "form_type"
+    ).orderBy(
+        F.col("filed_date").desc_nulls_last(),
+        F.col("accession_number").desc_nulls_last(),
+        F.col("source_hash").desc_nulls_last(),
+    )
 
     df = (
         df.withColumn("_rn1", F.row_number().over(w1))
@@ -191,7 +199,7 @@ def _deduplicate_restatements(df):
     df = df.withColumn("_tag_pri", priority_expr[F.col("tag")])
 
     w2 = Window.partitionBy(
-        "cik", "metric", "period_end", "fiscal_period", "form_type"
+        "cik", "metric", "period_start", "period_end", "fiscal_period", "form_type"
     ).orderBy(F.col("_tag_pri").asc())
 
     return (
@@ -201,31 +209,10 @@ def _deduplicate_restatements(df):
     )
 
 
-def upsert_silver_observations(spark, df, catalog: str = "sec_analytics") -> dict:
-    from delta.tables import DeltaTable
-
+def replace_silver_observations(spark, df, catalog: str = "sec_analytics") -> dict:
+    """Rebuild the observation snapshot so removed/restated facts cannot linger."""
     table_name = f"{catalog}.silver.observation"
-    target     = DeltaTable.forName(spark, table_name)
-
-    merge_keys = (
-        "t.cik = s.cik AND "
-        "t.tag = s.tag AND "
-        "t.period_end = s.period_end AND "
-        "t.fiscal_period = s.fiscal_period AND "
-        "t.form_type = s.form_type"
-    )
-
-    (
-        target.alias("t")
-        .merge(df.alias("s"), merge_keys)
-        .whenMatchedUpdate(set={
-            "value":       "s.value",
-            "filed_date":  "s.filed_date",
-            "source_hash": "s.source_hash",
-        })
-        .whenNotMatchedInsertAll()
-        .execute()
-    )
-
+    (df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
+     .partitionBy("metric").saveAsTable(table_name))
     total = spark.table(table_name).count()
     return {"total_rows": total}

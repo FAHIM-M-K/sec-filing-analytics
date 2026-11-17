@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
+import re
 from random import uniform
 from threading import Lock
 from time import monotonic, sleep
@@ -24,6 +26,29 @@ class SecClientSettings:
     initial_backoff_seconds: float
     max_backoff_seconds: float
 
+    def __post_init__(self) -> None:
+        if not self.base_url.startswith(("http://", "https://")):
+            raise ValueError("base_url must be an absolute HTTP(S) URL")
+        if not self.user_agent.strip():
+            raise ValueError("user_agent must not be empty")
+        float_settings = (
+            self.max_requests_per_second,
+            self.connect_timeout_seconds,
+            self.read_timeout_seconds,
+            self.initial_backoff_seconds,
+            self.max_backoff_seconds,
+        )
+        if not all(isfinite(value) for value in float_settings):
+            raise ValueError("SEC client numeric settings must be finite")
+        if self.max_requests_per_second <= 0:
+            raise ValueError("max_requests_per_second must be greater than zero")
+        if self.connect_timeout_seconds <= 0 or self.read_timeout_seconds <= 0:
+            raise ValueError("SEC request timeouts must be greater than zero")
+        if self.max_attempts < 1:
+            raise ValueError("max_attempts must be at least one")
+        if self.initial_backoff_seconds < 0 or self.max_backoff_seconds < self.initial_backoff_seconds:
+            raise ValueError("retry backoff values must satisfy 0 <= initial <= max")
+
     @classmethod
     def from_pipeline_config(cls, config: Mapping[str, Any]) -> "SecClientSettings":
         sec = config["source"]["sec"]
@@ -42,7 +67,7 @@ class SecClientSettings:
 
 class RequestRateLimiter:
     def __init__(self, requests_per_second: float) -> None:
-        if requests_per_second <= 0:
+        if not isfinite(requests_per_second) or requests_per_second <= 0:
             raise ValueError("requests_per_second must be greater than zero.")
         self._minimum_interval = 1 / requests_per_second
         self._next_request_at = 0.0
@@ -77,6 +102,11 @@ class SecApiClient:
     def get_submissions(self, cik: str | int) -> dict[str, Any]:
         normalized_cik = self._normalize_cik(cik)
         return self.get_json(f"/submissions/CIK{normalized_cik}.json")
+
+    def get_submission_history_file(self, filename: str) -> dict[str, Any]:
+        if not re.fullmatch(r"[A-Za-z0-9._-]+\.json", filename):
+            raise ValueError(f"Invalid SEC submissions history filename: {filename!r}")
+        return self.get_json(f"/submissions/{filename}")
 
     def get_company_facts(self, cik: str | int) -> dict[str, Any]:
         normalized_cik = self._normalize_cik(cik)
@@ -134,7 +164,10 @@ class SecApiClient:
 
         exponential_delay = self._settings.initial_backoff_seconds * (2 ** (attempt - 1))
         bounded_delay = min(exponential_delay, self._settings.max_backoff_seconds)
-        return bounded_delay + uniform(0, bounded_delay * 0.1)
+        return min(
+            self._settings.max_backoff_seconds,
+            bounded_delay + uniform(0, bounded_delay * 0.1),
+        )
 
     @staticmethod
     def _normalize_cik(cik: str | int) -> str:

@@ -41,6 +41,7 @@ GOLD_DIM_FILING_SCHEMA = StructType([
 
 GOLD_DIM_PERIOD_SCHEMA = StructType([
     StructField("period_key",      LongType(),    False),
+    StructField("period_start",    StringType(),  True),
     StructField("period_end",      StringType(),  False),
     StructField("fiscal_year",     IntegerType(), True),
     StructField("fiscal_period",   StringType(),  True),
@@ -135,6 +136,7 @@ def dim_period_ddl(catalog: str) -> str:
     return f"""
 CREATE TABLE IF NOT EXISTS {catalog}.gold.dim_reporting_period (
     period_key       BIGINT NOT NULL,
+    period_start     STRING,
     period_end       STRING NOT NULL,
     fiscal_year      INT,
     fiscal_period    STRING,

@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 import tempfile
+import pytest
 
 from sec_filing_analytics.silver.filings import parse_submission_payload, _parse_recent_block
 
@@ -93,4 +94,14 @@ def test_parse_sets_period_type():
 def test_parse_recent_block_empty():
     rows = _parse_recent_block("0000001234", "Test Co", {}, "h")
     assert rows == []
+
+
+def test_parse_fails_if_referenced_submission_history_chunk_is_missing(tmp_path):
+    payload = json.loads(json.dumps(SAMPLE_SUBMISSION))
+    payload["filings"]["files"] = [{"name": "CIK0000320193-submissions-001.json"}]
+    path = tmp_path / "submission.json.gz"
+    _write_gz(str(path), payload)
+
+    with pytest.raises(FileNotFoundError, match="Rerun Bronze submissions ingestion"):
+        parse_submission_payload(str(path), "hash123")
 

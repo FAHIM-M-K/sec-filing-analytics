@@ -2,6 +2,7 @@ import gzip
 import json
 import os
 import tempfile
+from pathlib import Path
 
 from sec_filing_analytics.silver.observations import parse_facts_payload, _TAG_TO_METRIC, CANONICAL_TAGS
 
@@ -122,4 +123,60 @@ def test_parse_includes_restatements_before_dedup():
         assert len(revenue_rows) == 2
     finally:
         os.unlink(path)
+
+
+def test_parse_preserves_distinct_quarter_and_ytd_starts():
+    facts = {"cik": "1", "facts": {"us-gaap": {
+        "Revenues": {"units": {"USD": [
+            {"accn": "a", "end": "2024-06-30", "start": "2024-04-01", "val": 30,
+             "form": "10-Q", "fp": "Q2", "fy": 2024, "filed": "2024-08-01"},
+            {"accn": "a", "end": "2024-06-30", "start": "2024-01-01", "val": 60,
+             "form": "10-Q", "fp": "Q2", "fy": 2024, "filed": "2024-08-01"},
+        ]}}
+    }}}
+    with tempfile.NamedTemporaryFile(suffix=".gz", delete=False) as tmp:
+        path = tmp.name
+    try:
+        _write_gz(path, facts)
+        rows = parse_facts_payload(path, "h")
+        assert {(r["period_start"], r["value"]) for r in rows} == {
+            ("2024-04-01", 30.0), ("2024-01-01", 60.0)
+        }
+    finally:
+        os.unlink(path)
+
+
+def test_spark_restatement_window_partitions_by_period_start_and_keeps_latest_filing():
+    source = Path("src/sec_filing_analytics/silver/observations.py").read_text(encoding="utf-8")
+    window = source.split("w1 = Window.partitionBy(", 1)[1].split("df = (", 1)[0]
+
+    assert '"period_start"' in window
+    assert 'F.col("filed_date").desc_nulls_last()' in window
+    assert 'F.col("accession_number").desc_nulls_last()' in window
+
+
+def test_spark_dedup_keeps_quarter_and_ytd_and_selects_latest_restatement():
+    import pytest
+
+    pytest.importorskip("pyspark")
+    from pyspark.sql import SparkSession
+    from sec_filing_analytics.silver.observations import _deduplicate_restatements
+    from sec_filing_analytics.silver.schema import SILVER_OBSERVATION_SCHEMA
+
+    try:
+        spark = SparkSession.builder.master("local[1]").appName("silver-observation-test").getOrCreate()
+    except Exception as exc:
+        pytest.skip(f"Local Spark runtime is unavailable: {exc}")
+
+    rows = [
+        ("0000000001", "a1", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 30.0, "2024-08-01", "h1"),
+        ("0000000001", "a2", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 35.0, "2024-09-01", "h2"),
+        ("0000000001", "a1", "Revenues", "Revenue", "duration", "2024-01-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 60.0, "2024-08-01", "h1"),
+    ]
+    try:
+        deduped = _deduplicate_restatements(spark.createDataFrame(rows, SILVER_OBSERVATION_SCHEMA))
+        actual = {(row.period_start, row.value) for row in deduped.collect()}
+        assert actual == {("2024-04-01", 35.0), ("2024-01-01", 60.0)}
+    finally:
+        spark.stop()
 

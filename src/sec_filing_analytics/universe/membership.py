@@ -1,11 +1,21 @@
 from __future__ import annotations
 
 import csv
-from datetime import date
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any
 
 CSV_COLUMNS = ["CIK", "Ticker", "Company Name", "Effective Start Date", "Effective End Date"]
+
+
+def active_membership_ciks(records: list[dict[str, Any]], on_date: date | None = None) -> list[str]:
+    """Return unique CIKs whose membership interval contains the requested date."""
+    as_of = on_date or datetime.now(timezone.utc).date()
+    return sorted({
+        record["cik"] for record in records
+        if record["membership_start_date"] <= as_of
+        and (record["membership_end_date"] is None or record["membership_end_date"] >= as_of)
+    })
 
 
 def load_membership_csv(path: str | Path) -> list[dict[str, Any]]:

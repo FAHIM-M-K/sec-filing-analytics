@@ -12,7 +12,7 @@ os.chdir(_repo_root)
 # COMMAND ----------
 
 from sec_filing_analytics.silver.schema import observation_ddl
-from sec_filing_analytics.silver.observations import build_silver_observations, upsert_silver_observations
+from sec_filing_analytics.silver.observations import build_silver_observations, replace_silver_observations
 
 catalog = "sec_analytics"
 
@@ -31,7 +31,7 @@ display(df.limit(20))
 
 # COMMAND ----------
 
-stats = upsert_silver_observations(spark, df, catalog)
+stats = replace_silver_observations(spark, df, catalog)
 print(stats)
 
 

@@ -68,9 +68,9 @@ def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
     return _parse_facts_data(data, source_hash)
 
 
-def _parse_facts_bytes(content: bytes, source_hash: str, path: str) -> list[dict]:
+def _parse_facts_text(content: str, source_hash: str, path: str) -> list[dict]:
     try:
-        data = json.loads(gzip.decompress(content))
+        data = json.loads(content)
         return _parse_facts_data(data, source_hash)
     except Exception as exc:
         raise RuntimeError(f"Failed to parse company-facts payload {path}: {exc}") from exc
@@ -183,12 +183,13 @@ def build_silver_observations(spark, manifest_df):
     paths = latest_payload_paths(manifest_df)
     manifest = spark.createDataFrame(paths, ["payload_path", "source_hash"])
     payload_files = (
-        spark.read.format("binaryFile")
+        spark.read.format("text")
+        .option("wholetext", True)
         .load([path for path, _ in paths])
-        .select(F.col("path").alias("payload_path"), "content")
+        .select(F.input_file_name().alias("payload_path"), F.col("value").alias("content"))
     )
     payloads = manifest.join(payload_files, on="payload_path", how="left")
-    parse_payload = F.udf(_parse_facts_bytes, ArrayType(SILVER_OBSERVATION_SCHEMA))
+    parse_payload = F.udf(_parse_facts_text, ArrayType(SILVER_OBSERVATION_SCHEMA))
     df = (
         payloads
         .select(F.explode(parse_payload("content", "source_hash", "payload_path")).alias("observation"))

@@ -186,7 +186,7 @@ def build_silver_observations(spark, manifest_df):
         spark.read.format("text")
         .option("wholetext", True)
         .load([path for path, _ in paths])
-        .select(F.input_file_name().alias("payload_path"), F.col("value").alias("content"))
+        .select(F.col("_metadata.file_path").alias("payload_path"), F.col("value").alias("content"))
     )
     payloads = manifest.join(payload_files, on="payload_path", how="left")
     parse_payload = F.udf(_parse_facts_text, ArrayType(SILVER_OBSERVATION_SCHEMA))

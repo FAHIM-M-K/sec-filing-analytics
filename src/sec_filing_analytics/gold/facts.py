@@ -14,17 +14,27 @@ def build_fact_financial_metric(spark, catalog: str):
     obs     = spark.table(f"{catalog}.silver.observation")
     company = spark.table(f"{catalog}.gold.dim_company").select("cik", "company_key")
     filing  = spark.table(f"{catalog}.gold.dim_filing").select("accession_number", "filing_key")
-    period  = spark.table(f"{catalog}.gold.dim_reporting_period").select(
-        "period_start", "period_end", "fiscal_period", "period_type", "period_key"
-    )
+    period  = spark.table(f"{catalog}.gold.dim_reporting_period").alias("p")
     metric  = spark.table(f"{catalog}.gold.dim_metric").select("metric_name", "metric_key")
 
-    df = (
-        obs
+    observation = obs.alias("o")
+    period_match = (
+        F.col("o.period_start").eqNullSafe(F.col("p.period_start"))
+        & F.col("o.period_end").eqNullSafe(F.col("p.period_end"))
+        & F.col("o.fiscal_period").eqNullSafe(F.col("p.fiscal_period"))
+        & F.col("o.period_type").eqNullSafe(F.col("p.period_type"))
+    )
+    observation = (
+        observation
+        .join(period, period_match, how="left")
+        .select("o.*", F.col("p.period_key").alias("period_key"))
         .withColumnRenamed("metric", "metric_name")
+    )
+
+    df = (
+        observation
         .join(company, on="cik",              how="left")
         .join(filing,  on="accession_number", how="left")
-        .join(period,  on=["period_start", "period_end", "fiscal_period", "period_type"], how="left")
         .join(metric,  on="metric_name",      how="left")
         .withColumn(
             "fact_key",
@@ -33,7 +43,6 @@ def build_fact_financial_metric(spark, catalog: str):
         )
         .withColumn("company_key", F.coalesce(F.col("company_key"), F.lit(0).cast("long")))
         .withColumn("filing_key",  F.coalesce(F.col("filing_key"),  F.lit(0).cast("long")))
-        .withColumn("period_key",  F.coalesce(F.col("period_key"),  F.lit(0).cast("long")))
         .withColumn("metric_key",  F.coalesce(F.col("metric_key"),  F.lit(0).cast("long")))
     )
 

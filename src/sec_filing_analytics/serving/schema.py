@@ -119,6 +119,31 @@ END;
 """
 
 
+def azure_sql_fact_corporate_event_ddl() -> str:
+    return """
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'fact_corporate_event' AND schema_id = SCHEMA_ID('dbo'))
+BEGIN
+    CREATE TABLE dbo.fact_corporate_event (
+        event_key        BIGINT NOT NULL PRIMARY KEY,
+        company_key      BIGINT NOT NULL,
+        cik              VARCHAR(10) NOT NULL,
+        accession_number VARCHAR(25) NOT NULL,
+        form_type        VARCHAR(20) NOT NULL,
+        filing_date      VARCHAR(10) NULL,
+        item_code        VARCHAR(10) NOT NULL,
+        item_description VARCHAR(100) NULL,
+        event_headline   NVARCHAR(500) NULL,
+        event_text       NVARCHAR(MAX) NULL,
+        char_count       INT NULL,
+        source_hash      VARCHAR(64) NULL
+    );
+    CREATE NONCLUSTERED INDEX ix_event_company ON dbo.fact_corporate_event (company_key);
+    CREATE NONCLUSTERED INDEX ix_event_date    ON dbo.fact_corporate_event (filing_date);
+    CREATE NONCLUSTERED INDEX ix_event_item    ON dbo.fact_corporate_event (item_code);
+END;
+"""
+
+
 def get_all_serving_ddls() -> list[str]:
     return [
         azure_sql_dim_company_ddl(),
@@ -127,4 +152,5 @@ def get_all_serving_ddls() -> list[str]:
         azure_sql_dim_metric_ddl(),
         azure_sql_fact_financial_metric_ddl(),
         azure_sql_fact_narrative_ddl(),
+        azure_sql_fact_corporate_event_ddl(),
     ]

@@ -24,7 +24,7 @@ def test_get_azure_sql_connection_properties():
 
 def test_serving_schema_ddls():
     ddls = get_all_serving_ddls()
-    assert len(ddls) == 6
+    assert len(ddls) == 7
 
     combined = "\n".join(ddls)
     assert "dbo.dim_company" in combined
@@ -34,5 +34,6 @@ def test_serving_schema_ddls():
     assert "dbo.dim_metric" in combined
     assert "dbo.fact_financial_metric" in combined
     assert "dbo.fact_narrative" in combined
+    assert "dbo.fact_corporate_event" in combined
     assert "dbo.vw_company_annual_financials" not in combined
 

@@ -1,7 +1,21 @@
-from pyspark.sql.types import (
-    StructType, StructField,
-    StringType, LongType, IntegerType, DoubleType, BooleanType, TimestampType,
-)
+try:
+    from pyspark.sql.types import (
+        StructType, StructField,
+        StringType, LongType, IntegerType, DoubleType, BooleanType, TimestampType,
+    )
+except ImportError:
+    class _StubType:
+        def __init__(self, *args, **kwargs):
+            self.name = kwargs.get("name", args[0] if args and isinstance(args[0], str) else "")
+            self.fields = args[0] if args and isinstance(args[0], list) else []
+            self.dataType = self
+        def simpleString(self):
+            return "string"
+        def __iter__(self):
+            return iter(self.fields)
+        def __call__(self, *args, **kwargs):
+            return self
+    StructType = StructField = StringType = LongType = IntegerType = DoubleType = BooleanType = TimestampType = _StubType
 
 GOLD_DIM_COMPANY_SCHEMA = StructType([
     StructField("company_key",  LongType(),      False),
@@ -65,6 +79,21 @@ GOLD_FACT_NARRATIVE_SCHEMA = StructType([
     StructField("filing_date",       StringType(),  True),
     StructField("item_name",         StringType(),  False),
     StructField("text_content",      StringType(),  True),
+    StructField("char_count",        IntegerType(), True),
+    StructField("source_hash",       StringType(),  True),
+])
+
+GOLD_FACT_CORPORATE_EVENT_SCHEMA = StructType([
+    StructField("event_key",         LongType(),    False),
+    StructField("company_key",       LongType(),    False),
+    StructField("cik",               StringType(),  False),
+    StructField("accession_number",  StringType(),  False),
+    StructField("form_type",         StringType(),  False),
+    StructField("filing_date",       StringType(),  True),
+    StructField("item_code",         StringType(),  False),
+    StructField("item_description",  StringType(),  True),
+    StructField("event_headline",    StringType(),  True),
+    StructField("event_text",        StringType(),  True),
     StructField("char_count",        IntegerType(), True),
     StructField("source_hash",       StringType(),  True),
 ])
@@ -165,4 +194,25 @@ CREATE TABLE IF NOT EXISTS {catalog}.gold.fact_narrative (
 )
 USING DELTA
 PARTITIONED BY (item_name)
+"""
+
+
+def fact_corporate_event_ddl(catalog: str) -> str:
+    return f"""
+CREATE TABLE IF NOT EXISTS {catalog}.gold.fact_corporate_event (
+    event_key         BIGINT NOT NULL,
+    company_key       BIGINT NOT NULL,
+    cik               STRING NOT NULL,
+    accession_number  STRING NOT NULL,
+    form_type         STRING NOT NULL,
+    filing_date       STRING,
+    item_code         STRING NOT NULL,
+    item_description  STRING,
+    event_headline    STRING,
+    event_text        STRING,
+    char_count        INT,
+    source_hash       STRING
+)
+USING DELTA
+PARTITIONED BY (item_code)
 """

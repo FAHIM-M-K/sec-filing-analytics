@@ -62,6 +62,7 @@ def export_gold_to_azure_sql(spark, dbutils, catalog: str = "sec_analytics", sco
         ("dim_metric",            f"{catalog}.gold.dim_metric",            "dbo.dim_metric"),
         ("fact_financial_metric", f"{catalog}.gold.fact_financial_metric", "dbo.fact_financial_metric"),
         ("fact_narrative",        f"{catalog}.gold.fact_narrative",        "dbo.fact_narrative"),
+        ("fact_corporate_event",  f"{catalog}.gold.fact_corporate_event",  "dbo.fact_corporate_event"),
     ]
 
     results = {}

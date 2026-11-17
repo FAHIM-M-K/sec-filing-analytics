@@ -48,6 +48,23 @@ SILVER_NARRATIVE_SCHEMA = StructType([
 ])
 
 
+SILVER_CORPORATE_EVENT_SCHEMA = StructType([
+    StructField("cik",              StringType(),  False),
+    StructField("accession_number", StringType(),  False),
+    StructField("form_type",        StringType(),  False),
+    StructField("filing_date",      StringType(),  True),
+    StructField("report_date",      StringType(),  True),
+    StructField("company_name",     StringType(),  True),
+    StructField("item_code",        StringType(),  False),
+    StructField("item_description", StringType(),  True),
+    StructField("primary_document", StringType(),  True),
+    StructField("event_headline",   StringType(),  True),
+    StructField("event_text",       StringType(),  True),
+    StructField("char_count",       IntegerType(), True),
+    StructField("source_hash",      StringType(),  True),
+])
+
+
 def filing_ddl(catalog: str = "sec_analytics") -> str:
     return f"""
     CREATE TABLE IF NOT EXISTS {catalog}.silver.filing (
@@ -82,6 +99,28 @@ def narrative_ddl(catalog: str = "sec_analytics") -> str:
     )
     USING DELTA
     PARTITIONED BY (form_type)
+    """
+
+
+def corporate_event_ddl(catalog: str = "sec_analytics") -> str:
+    return f"""
+    CREATE TABLE IF NOT EXISTS {catalog}.silver.corporate_event (
+        cik              STRING NOT NULL,
+        accession_number STRING NOT NULL,
+        form_type        STRING NOT NULL,
+        filing_date      STRING,
+        report_date      STRING,
+        company_name     STRING,
+        item_code        STRING NOT NULL,
+        item_description STRING,
+        primary_document STRING,
+        event_headline   STRING,
+        event_text       STRING,
+        char_count       INT,
+        source_hash      STRING
+    )
+    USING DELTA
+    PARTITIONED BY (item_code)
     """
 
 

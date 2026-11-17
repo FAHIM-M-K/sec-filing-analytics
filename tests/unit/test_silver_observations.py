@@ -2,7 +2,7 @@ import gzip
 import json
 import os
 import tempfile
-from sec_filing_analytics.silver.observations import parse_facts_payload
+from sec_filing_analytics.silver.observations import _parse_facts_bytes, parse_facts_payload
 
 
 SAMPLE_FACTS = {
@@ -56,6 +56,8 @@ def test_parse_keeps_only_supported_metrics_since_2010_with_period_types():
     try:
         _write_gz(path, SAMPLE_FACTS)
         rows = parse_facts_payload(path, "h")
+        with open(path, "rb") as payload:
+            assert _parse_facts_bytes(payload.read(), "h", path) == rows
         revenue = [r for r in rows if r["metric"] == "Revenue"]
         assets = [r for r in rows if r["tag"] == "Assets"]
         assert all(r["period_end"] >= "2010-01-01" for r in rows)

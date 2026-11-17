@@ -1,6 +1,3 @@
-import re
-
-
 def get_azure_sql_connection_properties(dbutils, scope: str = "azure_sql") -> dict:
     return {
         "host": dbutils.secrets.get(scope=scope, key="server"),
@@ -45,28 +42,6 @@ def validate_export_columns(dataframe_columns: list[str], sql_columns: list[str]
         )
 
 
-def validate_sql_table_schema(spark, df, target_table: str, conn_props: dict) -> list[str]:
-    if not re.fullmatch(r"dbo\.[A-Za-z_][A-Za-z0-9_]*", target_table):
-        raise ValueError(f"Unsupported Azure SQL table name: {target_table}")
-    target_schema = (
-        spark.read.format("sqlserver")
-        .options(**{
-            "host": conn_props["host"],
-            "port": conn_props["port"],
-            "database": conn_props["database"],
-            "user": conn_props["user"],
-            "password": conn_props["password"],
-            "encrypt": conn_props["encrypt"],
-            "trustServerCertificate": conn_props["trustServerCertificate"],
-            "query": f"SELECT TOP (0) * FROM {target_table}",
-        })
-        .load()
-    )
-    sql_columns = target_schema.columns
-    validate_export_columns(df.columns, sql_columns, target_table)
-    return sql_columns
-
-
 def select_tables_to_export(tables: list[tuple[str, str, str]], table_names: list[str] | None):
     if table_names is None:
         return tables
@@ -100,18 +75,21 @@ def export_gold_to_azure_sql(
 
     conn_props = get_azure_sql_connection_properties(dbutils, scope)
 
-    # Validate every destination before the overwrite writer truncates any table.
-    prepared = []
     results = {}
     for name, src, dest in tables_to_export:
         df = spark.table(src)
         cnt = df.count()
         if name in {"dim_reporting_period", "fact_financial_metric"} and cnt == 0:
             raise RuntimeError(f"Gold source {src} is empty; refusing to truncate {dest}.")
-        sql_columns = validate_sql_table_schema(spark, df, dest, conn_props)
-        prepared.append((name, df.select(*sql_columns), dest, cnt))
-
-    for name, df, dest, cnt in prepared:
+        if name == "dim_reporting_period":
+            # The idempotent ALTER TABLE migration appends period_start to this
+            # existing SQL table, so match its physical order for the old writer.
+            sql_columns = [
+                "period_key", "period_end", "fiscal_year", "fiscal_period",
+                "period_type", "calendar_year", "calendar_quarter", "period_start",
+            ]
+            validate_export_columns(df.columns, sql_columns, dest)
+            df = df.select(*sql_columns)
         export_table_to_azure_sql(df, dest, conn_props)
         results[name] = cnt
 

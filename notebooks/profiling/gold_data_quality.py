@@ -24,7 +24,9 @@ dim_stats = {
     },
     "dim_reporting_period": {
         "total_rows": dim_period.count(),
-        "distinct_periods": dim_period.select("period_end", "fiscal_period", "period_type").distinct().count(),
+        "distinct_periods": dim_period.select(
+            "period_start", "period_end", "fiscal_period", "period_type"
+        ).distinct().count(),
     },
     "dim_metric": {
         "total_rows": dim_metric.count(),
@@ -37,7 +39,7 @@ fact_stats = {
     "total_rows": facts.count(),
     "orphan_companies": facts.filter(F.col("company_key") == 0).count(),
     "orphan_filings": facts.filter(F.col("filing_key") == 0).count(),
-    "orphan_periods": facts.filter(F.col("period_key") == 0).count(),
+    "orphan_periods": facts.join(dim_period.select("period_key"), on="period_key", how="left_anti").count(),
     "orphan_metrics": facts.filter(F.col("metric_key") == 0).count(),
     "null_values": facts.filter(F.col("value").isNull()).count(),
     "metric_breakdown": [
@@ -61,13 +63,13 @@ apple = [
     .join(dim_period, on="period_key")
     .filter(
         (F.col("fiscal_period") == "FY")
-        & (F.col("fiscal_year") >= 2020)
+        & (F.col("calendar_year") >= 2020)
     )
     .select(
-        "fiscal_year", "metric_name", "period_end",
+        "calendar_year", "metric_name", "period_end",
         F.round(F.col("value") / 1e9, 2).alias("billions"),
     )
-    .orderBy("fiscal_year", "metric_name")
+    .orderBy("calendar_year", "metric_name")
     .collect()
 ]
 

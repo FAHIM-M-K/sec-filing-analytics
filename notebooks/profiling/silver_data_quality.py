@@ -2,8 +2,6 @@
 import json
 from pyspark.sql import functions as F
 
-spark.sql("DELETE FROM sec_analytics.silver.observation WHERE length(cik) < 10")
-
 filings      = spark.table("sec_analytics.silver.filing")
 observations = spark.table("sec_analytics.silver.observation")
 
@@ -20,6 +18,8 @@ filing_stats = {
         F.max("filing_date").alias("max"),
     ).first().asDict(),
 }
+
+invalid_cik_rows = observations.filter(F.length("cik") != 10).count()
 
 # COMMAND ----------
 metric_coverage = [
@@ -52,7 +52,7 @@ apple = [
 # COMMAND ----------
 result = {
     "silver_filing":      filing_stats,
-    "silver_observation": {"metrics": metric_coverage},
+    "silver_observation": {"metrics": metric_coverage, "invalid_cik_rows": invalid_cik_rows},
     "apple_spot_check":   apple,
 }
 

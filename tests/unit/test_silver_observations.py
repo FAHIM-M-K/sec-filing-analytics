@@ -2,7 +2,11 @@ import gzip
 import json
 import os
 import tempfile
-from sec_filing_analytics.silver.observations import _parse_facts_bytes, parse_facts_payload
+from sec_filing_analytics.silver.observations import (
+    _parse_facts_bytes,
+    _parse_facts_data,
+    parse_facts_payload,
+)
 
 
 SAMPLE_FACTS = {
@@ -88,6 +92,31 @@ def test_parse_preserves_distinct_quarter_and_ytd_starts():
         }
     finally:
         os.unlink(path)
+
+
+def test_parse_sums_revenue_components_and_excludes_investments_from_cash():
+    facts = {"cik": "1", "facts": {"us-gaap": {
+        "SalesRevenueGoodsNet": {"units": {"USD": [{
+            "accn": "a", "start": "2024-01-01", "end": "2024-12-31", "val": 100,
+            "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2025-02-01",
+        }]}},
+        "SalesRevenueServicesNet": {"units": {"USD": [{
+            "accn": "a", "start": "2024-01-01", "end": "2024-12-31", "val": 25,
+            "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2025-02-01",
+        }]}},
+        "CashCashEquivalentsAndShortTermInvestments": {"units": {"USD": [{
+            "accn": "a", "end": "2024-12-31", "val": 50,
+            "form": "10-K", "fp": "FY", "fy": 2024, "filed": "2025-02-01",
+        }]}},
+    }}}
+
+    rows = _parse_facts_data(facts, "h")
+    revenue = [row for row in rows if row["metric"] == "Revenue"]
+
+    assert len(revenue) == 1
+    assert revenue[0]["tag"] == "SalesRevenueGoodsNet+SalesRevenueServicesNet"
+    assert revenue[0]["value"] == 125.0
+    assert all(row["metric"] != "Cash" for row in rows)
 
 
 def test_spark_dedup_keeps_quarter_and_ytd_and_selects_latest_restatement():

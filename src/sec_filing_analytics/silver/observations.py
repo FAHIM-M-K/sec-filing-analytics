@@ -1,6 +1,9 @@
 import gzip
 import json
 
+_REVENUE_COMPONENT_TAGS = ("SalesRevenueGoodsNet", "SalesRevenueServicesNet")
+_REVENUE_COMPONENT_TAG = "+".join(_REVENUE_COMPONENT_TAGS)
+
 CANONICAL_TAGS: dict[str, list[str]] = {
     "Revenue": [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
@@ -32,7 +35,6 @@ CANONICAL_TAGS: dict[str, list[str]] = {
     ],
     "Cash": [
         "CashAndCashEquivalentsAtCarryingValue",
-        "CashCashEquivalentsAndShortTermInvestments",
         "Cash",
     ],
     "Long-term Debt": [
@@ -141,7 +143,35 @@ def _parse_facts_data(data: dict, source_hash: str) -> list[dict]:
                 "source_hash":      source_hash,
             })
 
-    return rows
+    return _combine_revenue_components(rows)
+
+
+def _combine_revenue_components(rows: list[dict]) -> list[dict]:
+    component_fields = (
+        "cik", "accession_number", "period_start", "period_end", "fiscal_year",
+        "fiscal_period", "form_type", "filed_date",
+    )
+    components: dict[tuple, list[dict]] = {}
+    result = []
+    for row in rows:
+        if row["tag"] not in _REVENUE_COMPONENT_TAGS:
+            result.append(row)
+            continue
+        key = tuple(row[field] for field in component_fields)
+        components.setdefault(key, []).append(row)
+
+    for component_rows in components.values():
+        by_tag = {tag: [row for row in component_rows if row["tag"] == tag]
+                  for tag in _REVENUE_COMPONENT_TAGS}
+        if all(len(by_tag[tag]) == 1 and by_tag[tag][0]["value"] is not None
+               for tag in _REVENUE_COMPONENT_TAGS):
+            combined = dict(by_tag[_REVENUE_COMPONENT_TAGS[0]][0])
+            combined["tag"] = _REVENUE_COMPONENT_TAG
+            combined["value"] = sum(by_tag[tag][0]["value"] for tag in _REVENUE_COMPONENT_TAGS)
+            result.append(combined)
+        else:
+            result.extend(component_rows)
+    return result
 
 
 def build_silver_observations(spark, manifest_df):
@@ -178,6 +208,7 @@ def _deduplicate_restatements(df):
         for metric_tags in CANONICAL_TAGS.values()
         for idx, tag in enumerate(metric_tags)
     }
+    tag_priority[_REVENUE_COMPONENT_TAG] = tag_priority[_REVENUE_COMPONENT_TAGS[0]]
     for i, tag in enumerate(_EPS_TAG_TO_METRIC):
         tag_priority[tag] = _base + i
     priority_expr = F.create_map(

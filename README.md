@@ -33,7 +33,7 @@ IF COL_LENGTH('dbo.dim_reporting_period', 'period_start') IS NULL
     ALTER TABLE dbo.dim_reporting_period ADD period_start VARCHAR(10) NULL;
 ```
 
-After the current-roster soft-delete change, run [`sql/migrations/001_add_current_sp500_flag.sql`](sql/migrations/001_add_current_sp500_flag.sql) once in Azure SQL Query Editor before export. Then run `serving/export_to_azure_sql`. Its default selection is `dim_company,dim_reporting_period,fact_financial_metric`, so unrelated serving tables remain untouched. The notebook validates all selected table schemas before writing and uses the SQL Server connector's overwrite-with-truncate mode to preserve the existing table definitions and indexes. Refresh the Power BI model after export completes.
+After deploying changes to table schemas or roster flags, migrations are applied automatically and idempotently by `export_to_azure_sql`. The export validates all selected table schemas before writing, stages data into `dbo.stg_*` tables, and executes a zero-downtime atomic swap into production `dbo.*` tables inside a single SQL transaction. Refresh the Power BI model after export completes.
 
 ## Repository layout
 
@@ -41,7 +41,7 @@ After the current-roster soft-delete change, run [`sql/migrations/001_add_curren
 configs/     Project configuration and the S&P 500 company list
 notebooks/   Databricks ingestion, transformation, profiling, and export notebooks
 src/         Reusable Python modules for each layer
-tests/       Fast unit tests for non-Spark logic
+tests/       Core contract and unit tests for each architectural layer
 docs/        Project documentation and architecture guides
 ```
 
@@ -52,7 +52,7 @@ git clone https://github.com/FAHIM-M-K/sec-filing-analytics.git
 cd sec-filing-analytics
 python -m venv .venv
 .venv\Scripts\activate
-python -m pip install -e ".[dev]"
+python -m pip install -e ".[dev,spark]"
 pytest tests/unit
 ruff check src tests
 ```

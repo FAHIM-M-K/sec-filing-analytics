@@ -1,24 +1,15 @@
-try:
-    from pyspark.sql.types import (
-        StructType, StructField,
-        StringType, LongType, IntegerType, DoubleType, BooleanType, TimestampType,
-    )
-except ImportError:
-    class _StubType:
-        def __init__(self, *args, **kwargs):
-            self.name = kwargs.get("name", args[0] if args and isinstance(args[0], str) else "")
-            self.fields = args[0] if args and isinstance(args[0], list) else []
-            self.dataType = self
+from pyspark.sql.types import (
+    StructType, StructField,
+    StringType, LongType, IntegerType, DoubleType, BooleanType, TimestampType,
+)
 
-        def simpleString(self):
-            return "string"
 
-        def __iter__(self):
-            return iter(self.fields)
-
-        def __call__(self, *args, **kwargs):
-            return self
-    StructType = StructField = StringType = LongType = IntegerType = DoubleType = BooleanType = TimestampType = _StubType
+def _hash_key(F, *col_exprs):
+    """Deterministic 63-bit surrogate key derived from SHA-256 hex prefix."""
+    return F.conv(
+        F.substring(F.sha2(F.concat_ws("|", *col_exprs), 256), 1, 15),
+        16, 10,
+    ).cast(LongType())
 
 GOLD_DIM_COMPANY_SCHEMA = StructType([
     StructField("company_key",  LongType(),      False),

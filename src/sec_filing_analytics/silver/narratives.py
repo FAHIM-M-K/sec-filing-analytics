@@ -1,10 +1,12 @@
 import hashlib
 import html
+import logging
 import re
 import time
 
 import requests
 
+_log = logging.getLogger(__name__)
 _SLEEP = 0.11
 _HEADERS = {"User-Agent": "sec-filing-analytics fahimmeethale@gmail.com"}
 
@@ -37,16 +39,14 @@ def _fetch_text(cik: str, accession_number: str, primary_document: str) -> str |
     try:
         resp = requests.get(url, headers=_HEADERS, timeout=20)
         if resp.status_code != 200:
-            import logging
-            logging.getLogger(__name__).warning("SEC fetch returned HTTP %s for %s", resp.status_code, url)
+            _log.warning("SEC fetch returned HTTP %s for %s", resp.status_code, url)
             return None
         text = re.sub(r"<[^>]+>", " ", resp.text)
         text = html.unescape(text)
         text = re.sub(r"\s+", " ", text)
         return text
     except Exception as exc:
-        import logging
-        logging.getLogger(__name__).warning("SEC fetch exception for %s: %s", url, exc)
+        _log.warning("SEC fetch exception for %s: %s", url, exc)
         return None
 
 

@@ -15,11 +15,9 @@ from sec_filing_analytics.gold.schema import fact_ddl
 spark.sql(fact_ddl(CATALOG))
 
 # COMMAND ----------
-from sec_filing_analytics.gold.facts import build_fact_financial_metric
+from sec_filing_analytics.gold.facts import build_fact_financial_metric, upsert_fact_financial_metric
 
 df = build_fact_financial_metric(spark, CATALOG)
-# Full replacement is required after changing period grain: old fact keys must
-# not coexist with the rebuilt period dimension.
 df.persist()
 try:
     fact_count = df.count()
@@ -45,9 +43,7 @@ try:
         .count()
     ):
         raise RuntimeError("Financial facts include periods before 2010; refusing to replace the existing fact table.")
-    (df.write.format("delta").mode("overwrite").option("overwriteSchema", "true")
-     .partitionBy("metric_name").saveAsTable(f"{CATALOG}.gold.fact_financial_metric"))
-    result = {"total_rows": fact_count}
+    result = upsert_fact_financial_metric(spark, df, CATALOG)
 finally:
     df.unpersist()
 print("fact_financial_metric:", result)

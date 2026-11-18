@@ -1,5 +1,7 @@
 from datetime import datetime, timezone
 
+from sec_filing_analytics.gold.schema import _hash_key
+
 _METRIC_CATALOG = [
     {"metric_name": "Revenue",             "unit": "USD",        "statement_type": "income"},
     {"metric_name": "Net Income",          "unit": "USD",        "statement_type": "income"},
@@ -12,14 +14,6 @@ _METRIC_CATALOG = [
     {"metric_name": "Cash",                "unit": "USD",        "statement_type": "balance_sheet"},
     {"metric_name": "Long-term Debt",      "unit": "USD",        "statement_type": "balance_sheet"},
 ]
-
-
-def _hash_key(F, *col_exprs):
-    from pyspark.sql.types import LongType
-    return F.conv(
-        F.substring(F.sha2(F.concat_ws("|", *col_exprs), 256), 1, 15),
-        16, 10,
-    ).cast(LongType())
 
 
 def _load_sp500_universe(sp500_path: str) -> list[dict]:

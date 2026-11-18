@@ -1,14 +1,6 @@
-from __future__ import annotations
-
 from typing import Any
 
-
-def _hash_key(F: Any, *col_exprs: Any) -> Any:
-    from pyspark.sql.types import LongType
-    return F.conv(
-        F.substring(F.sha2(F.concat_ws("|", *col_exprs), 256), 1, 15),
-        16, 10,
-    ).cast(LongType())
+from sec_filing_analytics.gold.schema import _hash_key
 
 
 def build_fact_corporate_event(spark: Any, catalog: str) -> Any:

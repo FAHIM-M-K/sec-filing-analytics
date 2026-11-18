@@ -36,7 +36,7 @@ stages:
 
           - script: |
               python -m pip install --upgrade pip
-              pip install -e ".[dev]"
+              pip install -e ".[dev,spark]"
             displayName: 'Install Dependencies'
 
           - script: |

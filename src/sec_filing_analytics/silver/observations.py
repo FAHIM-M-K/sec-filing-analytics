@@ -1,6 +1,8 @@
 import gzip
 import json
 
+from sec_filing_analytics.silver.schema import ANNUAL_AND_QUARTERLY_FORMS
+
 _REVENUE_COMPONENT_TAGS = ("SalesRevenueGoodsNet", "SalesRevenueServicesNet")
 _REVENUE_COMPONENT_TAG = "+".join(_REVENUE_COMPONENT_TAGS)
 
@@ -58,8 +60,6 @@ _TAG_TO_METRIC: dict[str, str] = {
     for tag in tags
 }
 
-RELEVANT_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
-
 
 def parse_facts_payload(path: str, source_hash: str) -> list[dict]:
     with gzip.open(path, "rt", encoding="utf-8") as f:
@@ -90,7 +90,7 @@ def _parse_facts_data(data: dict, source_hash: str) -> list[dict]:
         usd_obs = us_gaap[tag].get("units", {}).get("USD", [])
         for o in usd_obs:
             form = o.get("form", "")
-            if form not in RELEVANT_FORMS:
+            if form not in ANNUAL_AND_QUARTERLY_FORMS:
                 continue
 
             end = o.get("end", "")
@@ -122,7 +122,7 @@ def _parse_facts_data(data: dict, source_hash: str) -> list[dict]:
             continue
         for o in us_gaap[tag].get("units", {}).get("USD/shares", []):
             form = o.get("form", "")
-            if form not in RELEVANT_FORMS:
+            if form not in ANNUAL_AND_QUARTERLY_FORMS:
                 continue
             end = o.get("end", "")
             if end < "2010-01-01":

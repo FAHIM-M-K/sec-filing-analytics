@@ -65,6 +65,10 @@ SILVER_CORPORATE_EVENT_SCHEMA = StructType([
 ])
 
 
+# Shared set of SEC filing form types covering annual and quarterly reports.
+ANNUAL_AND_QUARTERLY_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
+
+
 def filing_ddl(catalog: str = "sec_analytics") -> str:
     return f"""
     CREATE TABLE IF NOT EXISTS {catalog}.silver.filing (

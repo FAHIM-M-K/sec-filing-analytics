@@ -1,9 +1,4 @@
-def _hash_key(F, *col_exprs):
-    from pyspark.sql.types import LongType
-    return F.conv(
-        F.substring(F.sha2(F.concat_ws("|", *col_exprs), 256), 1, 15),
-        16, 10,
-    ).cast(LongType())
+from sec_filing_analytics.gold.schema import _hash_key
 
 
 def build_fact_narrative(spark, catalog: str):

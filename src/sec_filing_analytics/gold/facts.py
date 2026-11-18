@@ -1,9 +1,4 @@
-def _hash_key(F, *col_exprs):
-    from pyspark.sql.types import LongType
-    return F.conv(
-        F.substring(F.sha2(F.concat_ws("|", *col_exprs), 256), 1, 15),
-        16, 10,
-    ).cast(LongType())
+from sec_filing_analytics.gold.schema import _hash_key
 
 
 def build_fact_financial_metric(spark, catalog: str):
@@ -57,3 +52,48 @@ def build_fact_financial_metric(spark, catalog: str):
         .select([fld.name for fld in GOLD_FACT_SCHEMA])
     )
     return df
+
+def upsert_fact_financial_metric(spark, df, catalog: str = "sec_analytics") -> dict:
+    from delta.tables import DeltaTable
+    from sec_filing_analytics.gold.schema import fact_ddl
+
+    spark.sql(fact_ddl(catalog))
+    table_name = f"{catalog}.gold.fact_financial_metric"
+
+    # If the target Delta table does not exist or has 0 rows, initialize with partition
+    try:
+        target = DeltaTable.forName(spark, table_name)
+    except Exception:
+        (
+            df.write.format("delta")
+            .mode("overwrite")
+            .partitionBy("metric_name")
+            .saveAsTable(table_name)
+        )
+        return {"total_rows": spark.table(table_name).count(), "operation": "initial_load"}
+
+    merge_condition = (
+        "t.cik = s.cik AND "
+        "t.accession_number = s.accession_number AND "
+        "t.metric_name = s.metric_name AND "
+        "t.period_key = s.period_key"
+    )
+
+    (
+        target.alias("t")
+        .merge(df.alias("s"), merge_condition)
+        .whenMatchedUpdate(set={
+            "fact_key":    "s.fact_key",
+            "company_key": "s.company_key",
+            "filing_key":  "s.filing_key",
+            "metric_key":  "s.metric_key",
+            "source_tag":  "s.source_tag",
+            "value":       "s.value",
+            "source_hash": "s.source_hash",
+        })
+        .whenNotMatchedInsertAll()
+        .execute()
+    )
+
+    total = spark.table(table_name).count()
+    return {"total_rows": total, "operation": "merge"}

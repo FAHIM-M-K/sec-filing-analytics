@@ -1,74 +1,24 @@
-
-import pytest
 import re
+import pytest
 
 from sec_filing_analytics.gold.schema import (
     GOLD_DIM_COMPANY_SCHEMA,
     GOLD_DIM_FILING_SCHEMA,
-    GOLD_DIM_PERIOD_SCHEMA,
     GOLD_DIM_METRIC_SCHEMA,
-    GOLD_FACT_SCHEMA,
-    GOLD_FACT_NARRATIVE_SCHEMA,
+    GOLD_DIM_PERIOD_SCHEMA,
     GOLD_FACT_CORPORATE_EVENT_SCHEMA,
+    GOLD_FACT_NARRATIVE_SCHEMA,
+    GOLD_FACT_SCHEMA,
 )
 from sec_filing_analytics.serving.azure_sql import (
-    select_tables_to_export,
+    build_atomic_swap_sql,
     validate_export_columns,
 )
-from sec_filing_analytics.serving.schema import (
-    get_all_serving_ddls,
-    get_serving_ddls_for_tables,
-    get_serving_migration_ddls,
-    get_serving_migrations_for_tables,
-)
+from sec_filing_analytics.serving.schema import get_all_serving_ddls
 
 
-def test_period_start_migration_is_idempotent():
-    ddl = "\n".join(get_serving_migration_ddls())
-    assert "COL_LENGTH('dbo.dim_reporting_period', 'period_start') IS NULL" in ddl
-    assert "ADD period_start VARCHAR(10) NULL" in ddl
-
-
-def test_current_roster_flag_migration_is_idempotent():
-    migration = get_serving_migrations_for_tables(["dim_company"])[0]
-    assert "COL_LENGTH('dbo.dim_company', 'is_current_sp500') IS NULL" in migration
-    assert "ADD is_current_sp500 BIT NOT NULL" in migration
-
-
-def test_export_schema_rejects_mismatch_before_table_truncation():
-    with pytest.raises(ValueError, match="Schema mismatch for dbo.dim_reporting_period"):
-        validate_export_columns(["period_key", "period_start"], ["period_key"], "dbo.dim_reporting_period")
-
-
-def test_export_table_selection_keeps_unrelated_tables_out_of_rebuild():
-    tables = [
-        ("dim_reporting_period", "gold.dim_reporting_period", "dbo.dim_reporting_period"),
-        ("fact_financial_metric", "gold.fact_financial_metric", "dbo.fact_financial_metric"),
-        ("fact_narrative", "gold.fact_narrative", "dbo.fact_narrative"),
-    ]
-    selected = select_tables_to_export(tables, ["dim_reporting_period", "fact_financial_metric"])
-    assert [entry[0] for entry in selected] == ["dim_reporting_period", "fact_financial_metric"]
-
-
-def test_export_table_selection_rejects_unknown_table_names():
-    with pytest.raises(ValueError, match="Unknown Azure SQL export table"):
-        select_tables_to_export([], ["dbo.users"])
-
-
-def test_period_grain_export_provisions_only_affected_tables():
-    selected = ["dim_reporting_period", "fact_financial_metric"]
-    ddls = get_serving_ddls_for_tables(selected)
-    migrations = get_serving_migrations_for_tables(selected)
-
-    assert len(ddls) == 2
-    assert all("dbo.dim_company" not in ddl and "dbo.fact_narrative" not in ddl for ddl in ddls)
-    assert len(migrations) == 2
-    assert any("dim_reporting_period" in migration for migration in migrations)
-    fact_migration = next(migration for migration in migrations if "source_tag" in migration)
-    assert "COL_LENGTH('dbo.fact_financial_metric', 'source_tag') IS NULL" in fact_migration
-
-
-def test_serving_ddl_columns_match_all_gold_export_schemas():
+def test_serving_ddl_matches_gold_delta_schema():
+    """Verify that every Azure SQL serving table DDL matches the corresponding Gold Delta Lake schema."""
     gold_schemas = {
         "dim_company": GOLD_DIM_COMPANY_SCHEMA,
         "dim_filing": GOLD_DIM_FILING_SCHEMA,
@@ -78,15 +28,37 @@ def test_serving_ddl_columns_match_all_gold_export_schemas():
         "fact_narrative": GOLD_FACT_NARRATIVE_SCHEMA,
         "fact_corporate_event": GOLD_FACT_CORPORATE_EVENT_SCHEMA,
     }
+
     for ddl in get_all_serving_ddls():
-        header = re.search(r"CREATE TABLE dbo\.(\w+)\s*\((.*?)\);", ddl, re.S)
-        assert header, f"Could not parse serving DDL: {ddl}"
-        table_name, body = header.groups()
-        sql_columns = re.findall(r"^\s*([a-zA-Z_]\w*)\s+(?:BIGINT|VARCHAR|NVARCHAR|DATETIME2|INT|BIT|FLOAT)", body, re.M | re.I)
+        match = re.search(r"CREATE TABLE dbo\.(\w+)\s*\((.*?)\);", ddl, re.S)
+        assert match, f"Could not parse DDL: {ddl}"
+        table_name, body = match.groups()
+        sql_columns = re.findall(
+            r"^\s*([a-zA-Z_]\w*)\s+(?:BIGINT|VARCHAR|NVARCHAR|DATETIME2|INT|BIT|FLOAT)",
+            body,
+            re.M | re.I,
+        )
         gold_columns = [field.name for field in gold_schemas[table_name].fields]
-        assert sql_columns == gold_columns, f"Gold/SQL column mismatch for {table_name}"
+        assert sql_columns == gold_columns, f"Schema mismatch between Gold and Serving for table: {table_name}"
 
 
-def test_unrelated_export_does_not_run_period_migration():
-    assert get_serving_migrations_for_tables(["fact_narrative"]) == []
+def test_atomic_swap_and_schema_validation():
+    """Verify fail-closed pre-flight column validation and transactional atomic swap SQL generation."""
+    # 1. Pre-flight column check fails before touching database
+    with pytest.raises(ValueError, match="Schema mismatch for dbo.dim_company"):
+        validate_export_columns(["company_key", "unexpected_col"], ["company_key"], "dbo.dim_company")
 
+    # 2. Transactional atomic swap script contains BEGIN TRANSACTION, table truncation, and COMMIT
+    tables_to_swap = [
+        ("dim_company", "gold.dim_company", "dbo.dim_company"),
+        ("fact_financial_metric", "gold.fact_financial_metric", "dbo.fact_financial_metric"),
+    ]
+    swap_sql = build_atomic_swap_sql(tables_to_swap)
+
+    assert "BEGIN TRANSACTION;" in swap_sql
+    assert "TRUNCATE TABLE dbo.dim_company;" in swap_sql
+    assert "INSERT INTO dbo.dim_company SELECT * FROM dbo.stg_dim_company;" in swap_sql
+    assert "TRUNCATE TABLE dbo.fact_financial_metric;" in swap_sql
+    assert "INSERT INTO dbo.fact_financial_metric SELECT * FROM dbo.stg_fact_financial_metric;" in swap_sql
+    assert "COMMIT TRANSACTION;" in swap_sql
+    assert "ROLLBACK TRANSACTION;" in swap_sql

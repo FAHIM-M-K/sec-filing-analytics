@@ -1,7 +1,7 @@
 import gzip
 import json
 
-FILING_FORMS = {"10-K", "10-Q", "10-K/A", "10-Q/A"}
+from sec_filing_analytics.silver.schema import ANNUAL_AND_QUARTERLY_FORMS
 
 
 def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) -> list[dict]:
@@ -15,7 +15,7 @@ def _parse_recent_block(cik: str, company: str, recent: dict, source_hash: str) 
 
     rows = []
     for i, form in enumerate(forms):
-        if form not in FILING_FORMS:
+        if form not in ANNUAL_AND_QUARTERLY_FORMS:
             continue
         filing_date = dates[i] if i < len(dates) else ""
         if filing_date < "2009-01-01":

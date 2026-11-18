@@ -235,16 +235,27 @@ def _deduplicate_restatements(df):
         .drop("_rn1")
     )
 
-    df = df.withColumn("_tag_pri", priority_expr[F.col("tag")])
+    # Prefer a nonnegative debt candidate when the same period has one; retain
+    # the existing tag order when candidates have the same sign.
+    df = (
+        df.withColumn("_tag_pri", priority_expr[F.col("tag")])
+        .withColumn(
+            "_debt_value_pri",
+            F.when(
+                (F.col("metric") == "Long-term Debt") & (F.col("value") < 0),
+                F.lit(1),
+            ).otherwise(F.lit(0)),
+        )
+    )
 
     w2 = Window.partitionBy(
         "cik", "metric", "period_start", "period_end", "fiscal_period"
-    ).orderBy(F.col("_tag_pri").asc())
+    ).orderBy(F.col("_debt_value_pri").asc(), F.col("_tag_pri").asc())
 
     return (
         df.withColumn("_rn2", F.row_number().over(w2))
         .filter(F.col("_rn2") == 1)
-        .drop("_rn2", "_tag_pri")
+        .drop("_rn2", "_tag_pri", "_debt_value_pri")
     )
 
 

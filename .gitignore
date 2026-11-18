@@ -4,8 +4,8 @@
 __pycache__/
 *.py[cod]
 
-skills/
 docs/
+sql/
 
 PROJECT.md
 

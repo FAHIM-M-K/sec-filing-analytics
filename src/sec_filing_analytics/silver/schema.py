@@ -102,6 +102,20 @@ def narrative_ddl(catalog: str = "sec_analytics") -> str:
     """
 
 
+def narrative_attempt_ddl(catalog: str = "sec_analytics") -> str:
+    return f"""
+    CREATE TABLE IF NOT EXISTS {catalog}.silver.filing_narrative_attempt (
+        cik              STRING NOT NULL,
+        accession_number STRING NOT NULL,
+        status           STRING NOT NULL,
+        item_count       INT NOT NULL,
+        attempt_count    INT NOT NULL,
+        last_attempt_at  TIMESTAMP NOT NULL
+    )
+    USING DELTA
+    """
+
+
 def corporate_event_ddl(catalog: str = "sec_analytics") -> str:
     return f"""
     CREATE TABLE IF NOT EXISTS {catalog}.silver.corporate_event (

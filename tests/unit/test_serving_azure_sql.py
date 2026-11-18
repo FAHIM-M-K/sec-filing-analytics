@@ -62,8 +62,10 @@ def test_period_grain_export_provisions_only_affected_tables():
 
     assert len(ddls) == 2
     assert all("dbo.dim_company" not in ddl and "dbo.fact_narrative" not in ddl for ddl in ddls)
-    assert len(migrations) == 1
-    assert "dim_reporting_period" in migrations[0]
+    assert len(migrations) == 2
+    assert any("dim_reporting_period" in migration for migration in migrations)
+    fact_migration = next(migration for migration in migrations if "source_tag" in migration)
+    assert "COL_LENGTH('dbo.fact_financial_metric', 'source_tag') IS NULL" in fact_migration
 
 
 def test_serving_ddl_columns_match_all_gold_export_schemas():

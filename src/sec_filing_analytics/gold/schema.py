@@ -70,6 +70,7 @@ GOLD_FACT_SCHEMA = StructType([
     StructField("cik",               StringType(), False),
     StructField("accession_number",  StringType(), False),
     StructField("metric_name",       StringType(), False),
+    StructField("source_tag",        StringType(), True),
     StructField("value",             DoubleType(), True),
     StructField("source_hash",       StringType(), True),
 ])
@@ -176,6 +177,7 @@ CREATE TABLE IF NOT EXISTS {catalog}.gold.fact_financial_metric (
     cik              STRING NOT NULL,
     accession_number STRING NOT NULL,
     metric_name      STRING NOT NULL,
+    source_tag       STRING,
     value            DOUBLE,
     source_hash      STRING
 )

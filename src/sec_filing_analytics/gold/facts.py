@@ -36,9 +36,10 @@ def build_fact_financial_metric(spark, catalog: str):
         .join(company, on="cik",              how="left")
         .join(filing,  on="accession_number", how="left")
         .join(metric,  on="metric_name",      how="left")
+        .withColumnRenamed("tag", "source_tag")
         .withColumn(
             "fact_key",
-            _hash_key(F, F.col("cik"), F.col("accession_number"), F.col("tag"),
+            _hash_key(F, F.col("cik"), F.col("accession_number"), F.col("source_tag"),
                       F.col("period_start"), F.col("period_end"), F.col("fiscal_period"), F.col("form_type")),
         )
         .withColumn("company_key", F.coalesce(F.col("company_key"), F.lit(0).cast("long")))

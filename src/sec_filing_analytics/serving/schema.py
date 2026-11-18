@@ -97,6 +97,18 @@ IF COL_LENGTH('dbo.dim_reporting_period', 'period_start') IS NULL
 """
 
 
+def azure_sql_fact_metric_migration_ddl() -> str:
+    return """
+IF OBJECT_ID('dbo.fact_financial_metric', 'U') IS NULL
+BEGIN
+    ;THROW 50002, 'dbo.fact_financial_metric must exist before applying this migration.', 1;
+END;
+
+IF COL_LENGTH('dbo.fact_financial_metric', 'source_tag') IS NULL
+    ALTER TABLE dbo.fact_financial_metric ADD source_tag VARCHAR(255) NULL;
+"""
+
+
 def azure_sql_fact_financial_metric_ddl() -> str:
     return """
 IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'fact_financial_metric' AND schema_id = SCHEMA_ID('dbo'))
@@ -110,6 +122,7 @@ BEGIN
         cik              VARCHAR(10) NOT NULL,
         accession_number VARCHAR(25) NOT NULL,
         metric_name      VARCHAR(100) NOT NULL,
+        source_tag       VARCHAR(255) NULL,
         value            FLOAT NULL,
         source_hash      VARCHAR(64) NULL
     );
@@ -201,6 +214,7 @@ def get_serving_migration_ddls() -> list[str]:
     return [
         azure_sql_dim_company_migration_ddl(),
         azure_sql_dim_period_migration_ddl(),
+        azure_sql_fact_metric_migration_ddl(),
     ]
 
 
@@ -210,4 +224,6 @@ def get_serving_migrations_for_tables(table_names: list[str]) -> list[str]:
         migrations.append(azure_sql_dim_company_migration_ddl())
     if "dim_reporting_period" in table_names:
         migrations.append(azure_sql_dim_period_migration_ddl())
+    if "fact_financial_metric" in table_names:
+        migrations.append(azure_sql_fact_metric_migration_ddl())
     return migrations

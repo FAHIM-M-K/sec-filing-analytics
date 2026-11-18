@@ -70,8 +70,9 @@ def _extract_section(text: str, start_pat: str, stop_pat: str) -> str | None:
     return max(candidates, key=len)
 
 
-def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
+def build_narrative_rows(filing_rows: list[dict]) -> dict[str, list[dict]]:
     rows = []
+    outcomes = []
     for filing in filing_rows:
         form      = filing.get("form_type", "")
         items     = _FORM_ITEMS.get(form)
@@ -87,12 +88,20 @@ def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
         text = _fetch_text(cik, accn, doc)
         time.sleep(_SLEEP)
         if not text:
+            outcomes.append({
+                "cik": cik,
+                "accession_number": accn,
+                "status": "fetch_failed",
+                "item_count": 0,
+            })
             continue
 
+        item_count = 0
         for item_name, start_pat, stop_pat in items:
             content = _extract_section(text, start_pat, stop_pat)
             if not content:
                 continue
+            item_count += 1
             rows.append({
                 "cik":              cik,
                 "accession_number": accn,
@@ -104,7 +113,14 @@ def build_narrative_rows(filing_rows: list[dict]) -> list[dict]:
                 "source_hash":      hashlib.sha256(content.encode("utf-8")).hexdigest(),
             })
 
-    return rows
+        outcomes.append({
+            "cik": cik,
+            "accession_number": accn,
+            "status": "complete" if item_count == len(items) else "partial" if item_count else "no_sections",
+            "item_count": item_count,
+        })
+
+    return {"rows": rows, "outcomes": outcomes}
 
 
 def upsert_narratives(spark, df, catalog: str = "sec_analytics") -> dict:
@@ -136,3 +152,40 @@ def upsert_narratives(spark, df, catalog: str = "sec_analytics") -> dict:
 
     total = spark.table(table_name).count()
     return {"total_rows": total}
+
+
+def upsert_narrative_attempts(spark, outcomes: list[dict], catalog: str = "sec_analytics") -> None:
+    if not outcomes:
+        return
+
+    from delta.tables import DeltaTable
+    from pyspark.sql import functions as F
+    from sec_filing_analytics.silver.schema import narrative_attempt_ddl
+
+    spark.sql(narrative_attempt_ddl(catalog))
+    table_name = f"{catalog}.silver.filing_narrative_attempt"
+    incoming = spark.createDataFrame(outcomes).withColumn("last_attempt_at", F.current_timestamp())
+    target = DeltaTable.forName(spark, table_name)
+
+    (
+        target.alias("t")
+        .merge(
+            incoming.alias("s"),
+            "t.cik = s.cik AND t.accession_number = s.accession_number",
+        )
+        .whenMatchedUpdate(set={
+            "status": "s.status",
+            "item_count": "s.item_count",
+            "attempt_count": "t.attempt_count + 1",
+            "last_attempt_at": "s.last_attempt_at",
+        })
+        .whenNotMatchedInsert(values={
+            "cik": "s.cik",
+            "accession_number": "s.accession_number",
+            "status": "s.status",
+            "item_count": "s.item_count",
+            "attempt_count": "1",
+            "last_attempt_at": "s.last_attempt_at",
+        })
+        .execute()
+    )

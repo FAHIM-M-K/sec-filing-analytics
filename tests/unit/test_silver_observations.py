@@ -139,11 +139,17 @@ def test_spark_dedup_keeps_quarter_and_ytd_and_selects_latest_restatement():
         ("0000000001", "a1", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 30.0, "2024-08-01", "h1"),
         ("0000000001", "a2", "Revenues", "Revenue", "duration", "2024-04-01", "2024-06-30", 2024, "Q2", "10-Q/A", "USD", 35.0, "2024-09-01", "h2"),
         ("0000000001", "a1", "Revenues", "Revenue", "duration", "2024-01-01", "2024-06-30", 2024, "Q2", "10-Q", "USD", 60.0, "2024-08-01", "h1"),
+        ("0000000001", "d1", "LongTermDebt", "Long-term Debt", "instant", None, "2023-12-31", 2023, "FY", "10-K", "USD", -10.0, "2024-02-01", "h3"),
+        ("0000000001", "d1", "LongTermDebtAndCapitalLeaseObligations", "Long-term Debt", "instant", None, "2023-12-31", 2023, "FY", "10-K", "USD", 8.0, "2024-02-01", "h3"),
     ]
     try:
         deduped = _deduplicate_restatements(spark.createDataFrame(rows, SILVER_OBSERVATION_SCHEMA))
-        actual = {(row.period_start, row.value) for row in deduped.collect()}
-        assert actual == {("2024-04-01", 35.0), ("2024-01-01", 60.0)}
+        actual = {(row.metric, row.tag, row.period_start, row.value) for row in deduped.collect()}
+        assert actual == {
+            ("Revenue", "Revenues", "2024-04-01", 35.0),
+            ("Revenue", "Revenues", "2024-01-01", 60.0),
+            ("Long-term Debt", "LongTermDebtAndCapitalLeaseObligations", None, 8.0),
+        }
     finally:
         spark.stop()
 

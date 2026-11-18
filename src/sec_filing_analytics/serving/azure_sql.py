@@ -67,6 +67,31 @@ def validate_sql_table_schema(spark, df, target_table: str, conn_props: dict) ->
     return sql_columns
 
 
+def validate_sql_row_count(spark, target_table: str, expected_rows: int, conn_props: dict) -> None:
+    if not re.fullmatch(r"dbo\.[A-Za-z_][A-Za-z0-9_]*", target_table):
+        raise ValueError(f"Unsupported Azure SQL table name: {target_table}")
+    actual_rows = (
+        spark.read.format("sqlserver")
+        .options(**{
+            "host": conn_props["host"],
+            "port": conn_props["port"],
+            "database": conn_props["database"],
+            "user": conn_props["user"],
+            "password": conn_props["password"],
+            "encrypt": conn_props["encrypt"],
+            "trustServerCertificate": conn_props["trustServerCertificate"],
+            "query": f"SELECT COUNT_BIG(*) AS row_count FROM {target_table}",
+        })
+        .load()
+        .first()["row_count"]
+    )
+    if int(actual_rows) != expected_rows:
+        raise RuntimeError(
+            f"Azure SQL row-count mismatch for {target_table}: "
+            f"expected {expected_rows:,}, found {int(actual_rows):,}."
+        )
+
+
 def select_tables_to_export(tables: list[tuple[str, str, str]], table_names: list[str] | None):
     if table_names is None:
         return tables
@@ -112,8 +137,19 @@ def export_gold_to_azure_sql(
 
     # Do not begin any overwrite until every selected source and destination
     # schema has passed validation.
+    completed = []
     for name, df, dest, cnt in prepared:
-        export_table_to_azure_sql(df, dest, conn_props)
+        try:
+            export_table_to_azure_sql(df, dest, conn_props)
+            validate_sql_row_count(spark, dest, cnt, conn_props)
+        except Exception as exc:
+            published = ", ".join(completed) or "none"
+            raise RuntimeError(
+                f"Azure SQL export stopped at {dest}; row counts for completed tables "
+                f"were validated ({published}). The selected tables may now be from mixed "
+                "refreshes; rerun the full selected export before refreshing Power BI."
+            ) from exc
         results[name] = cnt
+        completed.append(name)
 
     return results

@@ -33,7 +33,7 @@ IF COL_LENGTH('dbo.dim_reporting_period', 'period_start') IS NULL
     ALTER TABLE dbo.dim_reporting_period ADD period_start VARCHAR(10) NULL;
 ```
 
-Then run `serving/export_to_azure_sql`. Its default selection is `dim_reporting_period,fact_financial_metric`, so unrelated serving tables remain untouched. The notebook validates both SQL table schemas before writing and uses the SQL Server connector's overwrite-with-truncate mode to preserve the existing table definitions and indexes. Refresh the Power BI model after export completes.
+After the current-roster soft-delete change, run [`sql/migrations/001_add_current_sp500_flag.sql`](sql/migrations/001_add_current_sp500_flag.sql) once in Azure SQL Query Editor before export. Then run `serving/export_to_azure_sql`. Its default selection is `dim_company,dim_reporting_period,fact_financial_metric`, so unrelated serving tables remain untouched. The notebook validates all selected table schemas before writing and uses the SQL Server connector's overwrite-with-truncate mode to preserve the existing table definitions and indexes. Refresh the Power BI model after export completes.
 
 ## Repository layout
 

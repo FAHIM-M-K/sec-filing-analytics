@@ -19,6 +19,9 @@ from sec_filing_analytics.gold.schema import (
 )
 
 spark.sql(dim_company_ddl(CATALOG))
+dim_company_table = f"{CATALOG}.gold.dim_company"
+if "is_current_sp500" not in spark.table(dim_company_table).columns:
+    spark.sql(f"ALTER TABLE {dim_company_table} ADD COLUMNS (is_current_sp500 BOOLEAN)")
 spark.sql(dim_filing_ddl(CATALOG))
 spark.sql(dim_period_ddl(CATALOG))
 spark.sql(dim_metric_ddl(CATALOG))

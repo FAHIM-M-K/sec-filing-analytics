@@ -26,6 +26,7 @@ GOLD_DIM_COMPANY_SCHEMA = StructType([
     StructField("company_name", StringType(),    True),
     StructField("ticker",       StringType(),    True),
     StructField("updated_at",   TimestampType(), True),
+    StructField("is_current_sp500", BooleanType(), False),
 ])
 
 GOLD_DIM_FILING_SCHEMA = StructType([
@@ -110,7 +111,8 @@ CREATE TABLE IF NOT EXISTS {catalog}.gold.dim_company (
     cik          STRING NOT NULL,
     company_name STRING,
     ticker       STRING,
-    updated_at   TIMESTAMP
+    updated_at   TIMESTAMP,
+    is_current_sp500 BOOLEAN NOT NULL
 )
 USING DELTA
 """

@@ -10,9 +10,26 @@ BEGIN
         cik          VARCHAR(10) NOT NULL,
         company_name VARCHAR(255) NULL,
         ticker       VARCHAR(10) NULL,
-        updated_at   DATETIME2 NULL
+        updated_at   DATETIME2 NULL,
+        is_current_sp500 BIT NOT NULL
     );
     CREATE NONCLUSTERED INDEX ix_company_ticker ON dbo.dim_company (ticker);
+END;
+"""
+
+
+def azure_sql_dim_company_migration_ddl() -> str:
+    return """
+IF OBJECT_ID('dbo.dim_company', 'U') IS NULL
+BEGIN
+    ;THROW 50001, 'dbo.dim_company must exist before applying this migration.', 1;
+END;
+
+IF COL_LENGTH('dbo.dim_company', 'is_current_sp500') IS NULL
+BEGIN
+    ALTER TABLE dbo.dim_company
+    ADD is_current_sp500 BIT NOT NULL
+        CONSTRAINT DF_dim_company_is_current_sp500 DEFAULT (1);
 END;
 """
 
@@ -181,8 +198,16 @@ def get_serving_ddls_for_tables(table_names: list[str]) -> list[str]:
 
 
 def get_serving_migration_ddls() -> list[str]:
-    return [azure_sql_dim_period_migration_ddl()]
+    return [
+        azure_sql_dim_company_migration_ddl(),
+        azure_sql_dim_period_migration_ddl(),
+    ]
 
 
 def get_serving_migrations_for_tables(table_names: list[str]) -> list[str]:
-    return [azure_sql_dim_period_migration_ddl()] if "dim_reporting_period" in table_names else []
+    migrations = []
+    if "dim_company" in table_names:
+        migrations.append(azure_sql_dim_company_migration_ddl())
+    if "dim_reporting_period" in table_names:
+        migrations.append(azure_sql_dim_period_migration_ddl())
+    return migrations

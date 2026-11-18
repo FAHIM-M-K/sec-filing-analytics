@@ -1,9 +1,4 @@
-import csv
-import os
-import logging
 from datetime import datetime, timezone
-
-_log = logging.getLogger(__name__)
 
 _METRIC_CATALOG = [
     {"metric_name": "Revenue",             "unit": "USD",        "statement_type": "income"},
@@ -28,18 +23,17 @@ def _hash_key(F, *col_exprs):
 
 
 def _load_sp500_universe(sp500_path: str) -> list[dict]:
-    universe: list[dict] = []
-    if not os.path.exists(sp500_path):
-        _log.warning("sp500.csv not found at %s", sp500_path)
-        return universe
-    with open(sp500_path, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            cik = row.get("CIK", "").strip().zfill(10)
-            ticker = row.get("Ticker", "").strip()
-            name = row.get("Company Name", "").strip()
-            if cik:
-                universe.append({"cik": cik, "ticker": ticker, "csv_name": name})
-    return universe
+    from sec_filing_analytics.universe.membership import load_membership_csv
+
+    return [
+        {
+            "cik": company["cik"],
+            "ticker": company["ticker"],
+            "csv_name": company["company_name"],
+            "in_roster": True,
+        }
+        for company in load_membership_csv(sp500_path)
+    ]
 
 
 def build_dim_company(spark, catalog: str, sp500_path: str):
@@ -48,7 +42,7 @@ def build_dim_company(spark, catalog: str, sp500_path: str):
     from sec_filing_analytics.gold.schema import GOLD_DIM_COMPANY_SCHEMA
 
     univ_rows = _load_sp500_universe(sp500_path)
-    univ_df = spark.createDataFrame(univ_rows) if univ_rows else spark.createDataFrame([], "cik STRING, ticker STRING, csv_name STRING")
+    univ_df = spark.createDataFrame(univ_rows)
 
     filing = spark.table(f"{catalog}.silver.filing")
     latest = (
@@ -57,18 +51,37 @@ def build_dim_company(spark, catalog: str, sp500_path: str):
             Window.partitionBy("cik").orderBy(F.col("filing_date").desc(), F.col("accession_number").desc())
         ))
         .filter(F.col("_rn") == 1)
-        .select("cik", "company_name")
+        .select("cik", F.col("company_name").alias("filing_name"))
+    )
+
+    existing = spark.table(f"{catalog}.gold.dim_company").select(
+        "cik",
+        F.col("company_name").alias("previous_name"),
+        F.col("ticker").alias("previous_ticker"),
+    )
+    known_ciks = (
+        univ_df.select("cik")
+        .unionByName(latest.select("cik"))
+        .unionByName(existing.select("cik"))
+        .filter(F.col("cik").isNotNull())
+        .distinct()
     )
 
     now = datetime.now(timezone.utc)
 
-    # Outer join universe with filings to guarantee all 500 companies exist in dim_company
     df = (
-        univ_df
-        .join(latest, on="cik", how="full_outer")
-        .withColumn("company_name", F.coalesce(F.col("company_name"), F.col("csv_name"), F.col("ticker"), F.lit("Unknown")))
+        known_ciks
+        .join(univ_df, on="cik", how="left")
+        .join(latest, on="cik", how="left")
+        .join(existing, on="cik", how="left")
+        .withColumn(
+            "company_name",
+            F.coalesce(F.col("filing_name"), F.col("csv_name"), F.col("previous_name"), F.col("ticker"), F.lit("Unknown")),
+        )
+        .withColumn("ticker", F.coalesce(F.col("ticker"), F.col("previous_ticker")))
         .withColumn("updated_at",  F.lit(now).cast("timestamp"))
         .withColumn("company_key", _hash_key(F, F.col("cik")))
+        .withColumn("is_current_sp500", F.coalesce(F.col("in_roster"), F.lit(False)))
         .select([fld.name for fld in GOLD_DIM_COMPANY_SCHEMA])
     )
     return df
@@ -186,6 +199,7 @@ def build_dim_metric(spark):
 
 
 def upsert_dim_company(spark, df, catalog: str) -> dict:
+    from pyspark.sql import functions as F
     from delta.tables import DeltaTable
     tbl = f"{catalog}.gold.dim_company"
     (
@@ -195,11 +209,20 @@ def upsert_dim_company(spark, df, catalog: str) -> dict:
             "company_name": "s.company_name",
             "ticker":       "s.ticker",
             "updated_at":   "s.updated_at",
+            "is_current_sp500": "s.is_current_sp500",
         })
         .whenNotMatchedInsertAll()
         .execute()
     )
-    return {"total_rows": spark.table(tbl).count()}
+    result = spark.table(tbl).agg(
+        F.sum(F.col("is_current_sp500").cast("int")).alias("current_rows")
+    ).first()
+    total_rows = spark.table(tbl).count()
+    return {
+        "total_rows": total_rows,
+        "current_rows": result["current_rows"] or 0,
+        "inactive_rows": total_rows - (result["current_rows"] or 0),
+    }
 
 
 def upsert_dim_filing(spark, df, catalog: str) -> dict:

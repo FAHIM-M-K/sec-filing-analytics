@@ -19,7 +19,7 @@ import uuid
 
 from sec_filing_analytics.config.loader import load_pipeline_config
 from sec_filing_analytics.sec_client.client import SecApiClient, SecClientSettings
-from sec_filing_analytics.universe.membership import load_membership_csv, active_membership_ciks
+from sec_filing_analytics.universe.membership import load_membership_csv
 from sec_filing_analytics.bronze.schema import create_company_facts_manifest_table
 from sec_filing_analytics.bronze.company_facts import (
     build_manifest_row,
@@ -56,11 +56,11 @@ print(f"Run ID: {run_id}")
 
 # COMMAND ----------
 
-all_records = load_membership_csv(config["universe"]["membership_file"])
-active_ciks = active_membership_ciks(all_records)
+companies = load_membership_csv(config["universe"]["membership_file"])
+ciks = [company["cik"] for company in companies]
 known_hashes = latest_company_facts_hashes(spark, COMPANY_FACTS_TABLE)
 
-print(f"Active CIKs : {len(active_ciks)}")
+print(f"Roster CIKs : {len(ciks)}")
 print(f"Known hashes: {len(known_hashes)}")
 
 # COMMAND ----------
@@ -72,7 +72,7 @@ print(f"Known hashes: {len(known_hashes)}")
 manifest_rows = []
 errors = []
 
-for cik in active_ciks:
+for cik in ciks:
     try:
         result = fetch_company_facts(cik, client)
         is_new_version = result.content_hash != known_hashes.get(cik)
@@ -107,7 +107,7 @@ print(f"Errors     : {len(errors)}")
 if errors:
     print("Failed CIKs:", [e["cik"] for e in errors])
 
-if len(errors) > max(1, int(len(active_ciks) * 0.10)):
+if len(errors) > max(1, int(len(ciks) * 0.10)):
     raise RuntimeError(
-        f"{len(errors)}/{len(active_ciks)} CIKs failed. Watermark not advanced."
+        f"{len(errors)}/{len(ciks)} CIKs failed. Watermark not advanced."
     )

@@ -1,15 +1,5 @@
-"""S&P 500 membership reference loading and current-constituent selection."""
+"""Loading and validating the project's fixed S&P 500 company roster."""
 
-from .membership import (
-    current_constituent_ciks,
-    load_membership_csv,
-    membership_table_ddl,
-    merge_membership_table,
-)
+from .membership import load_membership_csv
 
-__all__ = [
-    "current_constituent_ciks",
-    "load_membership_csv",
-    "membership_table_ddl",
-    "merge_membership_table",
-]
+__all__ = ["load_membership_csv"]

@@ -14,7 +14,7 @@ An end-to-end data platform that extracts, standardizes, and models 15+ years of
 SEC EDGAR is built for regulatory compliance, not financial analysis:
 1. **Data Silos**: Financial numbers are stored in structured XBRL tables, while qualitative risk commentary is buried inside 50MB unstructured HTML documents. Analysts must manually copy numbers into spreadsheets while flipping across dozens of browser tabs.
 2. **Accounting Taxonomy Divergence**: US-GAAP reporting varies across sectors. Commercial firms report sales (`SalesRevenueNet`), banks report net interest margins (`RevenuesNetOfInterestExpense`), and utilities report regulatory income (`RegulatedAndUnregulatedOperatingRevenue`). Standard screening tools leave banks and utilities blank.
-3. **Survivorship Bias**: Traditional tools filter historical data using current index constituents, ignoring the 200+ companies that entered or left the S&P 500 since 2010 and skewing historical peer medians.
+3. **Historical Cohort Context**: This project intentionally applies a fixed snapshot of current S&P 500 companies to filings from 2010 onward. Historical comparisons describe today's cohort, not the companies that belonged to the index in each historical year.
 
 ### The Solution & Business Impact
 The **SEC Financial Review Workbench** automates the entire ingestion, standardization, and modeling lifecycle:
@@ -57,7 +57,7 @@ The data pipeline runs on **Azure Databricks**, structured as a multi-task Medal
 * **Narrative Extraction**: Regex boundary parser extracts Item 1A (Risk Factors) and Item 7 (MD&A) with a **1,000-character content-density threshold** to filter out Table of Contents hyperlinks while preserving genuine 86KB risk disclosures.
 
 #### Gold Dimensional Mart
-* **Point-in-Time Membership**: Outer-joins `configs/sp500.csv` to ensure all 500 constituents exist in `dim_company` without forward-looking survivorship bias.
+* **Fixed Current Cohort**: Keeps one company row per known CIK, marks roster membership with `is_current_sp500`, and retains historical facts when a company leaves the configured roster. The project does not claim point-in-time S&P 500 membership.
 * **Accession Backfilling**: Resolves 11,946 historical comparative accession keys referenced in facts, expanding `dim_filing` to **30,210 rows** with zero orphan foreign keys.
 * **Surrogate Key Generation**: Stable 64-bit deterministic integer keys generated via hashing.
 

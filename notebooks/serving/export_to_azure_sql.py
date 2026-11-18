@@ -12,7 +12,7 @@ CATALOG = "sec_analytics"
 # COMMAND ----------
 dbutils.widgets.text(
     "tables_to_export",
-    "dim_reporting_period,fact_financial_metric",
+    "dim_company,dim_reporting_period,fact_financial_metric",
 )
 requested_tables = [
     table.strip()

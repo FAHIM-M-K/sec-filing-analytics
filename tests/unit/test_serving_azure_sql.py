@@ -29,6 +29,12 @@ def test_period_start_migration_is_idempotent():
     assert "ADD period_start VARCHAR(10) NULL" in ddl
 
 
+def test_current_roster_flag_migration_is_idempotent():
+    migration = get_serving_migrations_for_tables(["dim_company"])[0]
+    assert "COL_LENGTH('dbo.dim_company', 'is_current_sp500') IS NULL" in migration
+    assert "ADD is_current_sp500 BIT NOT NULL" in migration
+
+
 def test_export_schema_rejects_mismatch_before_table_truncation():
     with pytest.raises(ValueError, match="Schema mismatch for dbo.dim_reporting_period"):
         validate_export_columns(["period_key", "period_start"], ["period_key"], "dbo.dim_reporting_period")

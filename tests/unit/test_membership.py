@@ -1,31 +1,33 @@
-from pathlib import Path
-from datetime import date
+import pytest
 
-from sec_filing_analytics.universe.membership import active_membership_ciks, load_membership_csv
-
-
-def test_load_membership_csv_production_file():
-    records = load_membership_csv(Path("configs/sp500.csv"))
-    assert len(records) == 500
-    
-    seen_ciks = set()
-    for record in records:
-        assert len(record["cik"]) == 10
-        assert record["cik"].isdigit()
-        assert record["cik"] not in seen_ciks
-        seen_ciks.add(record["cik"])
-        
-        assert record["ticker"]
-        assert record["company_name"]
-        assert record["membership_start_date"] is not None
-        assert record["membership_end_date"] is None
+from sec_filing_analytics.universe.membership import load_membership_csv
 
 
-def test_active_memberships_respect_start_and_end_dates():
-    records = [
-        {"cik": "0000000001", "membership_start_date": date(2020, 1, 1), "membership_end_date": None},
-        {"cik": "0000000002", "membership_start_date": date(2027, 1, 1), "membership_end_date": None},
-        {"cik": "0000000003", "membership_start_date": date(2010, 1, 1), "membership_end_date": date(2025, 12, 31)},
-    ]
-    assert active_membership_ciks(records, date(2026, 11, 17)) == ["0000000001"]
+def test_roster_loader_returns_every_company_without_membership_dates(tmp_path):
+    path = tmp_path / "sp500.csv"
+    path.write_text(
+        "CIK,Ticker,Company Name\n"
+        "1,AAA,Company A\n"
+        "2,BBB,Company B\n",
+        encoding="utf-8",
+    )
 
+    records = load_membership_csv(path)
+
+    assert [record["cik"] for record in records] == ["0000000001", "0000000002"]
+
+
+def test_roster_loader_fails_closed_for_duplicate_or_empty_input(tmp_path):
+    path = tmp_path / "sp500.csv"
+    path.write_text(
+        "CIK,Ticker,Company Name\n"
+        "1,AAA,Company A\n"
+        "1,BBB,Company B\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="duplicate CIK"):
+        load_membership_csv(path)
+
+    path.write_text("CIK,Ticker,Company Name\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="no valid company rows"):
+        load_membership_csv(path)
